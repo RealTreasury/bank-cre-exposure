@@ -396,10 +396,10 @@
         <div class="report-content">
             <div class="filters">
                 <input type="text" id="searchBox" class="search-box" placeholder="Search bank names...">
-                <button class="filter-btn active" onclick="filterTable('all')">All Banks</button>
-                <button class="filter-btn" onclick="filterTable('high')">High Risk (>400%)</button>
-                <button class="filter-btn" onclick="filterTable('medium')">Medium Risk (300-400%)</button>
-                <button class="filter-btn" onclick="filterTable('large')">Large Banks (>$100B)</button>
+                <button class="filter-btn active" onclick="filterTable('all', event)">All Banks</button>
+                <button class="filter-btn" onclick="filterTable('high', event)">High Risk (>400%)</button>
+                <button class="filter-btn" onclick="filterTable('medium', event)">Medium Risk (300-400%)</button>
+                <button class="filter-btn" onclick="filterTable('large', event)">Large Banks (>$100B)</button>
             </div>
 
             <div class="table-container">
@@ -761,10 +761,10 @@
         });
 
         // Filter functionality
-        function filterTable(filterType) {
+        function filterTable(filterType, event) {
             const rows = document.querySelectorAll('#bankTable tbody tr');
             const buttons = document.querySelectorAll('.filter-btn');
-            
+
             // Update active button
             buttons.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
@@ -808,10 +808,10 @@
         // Add sort functionality
         document.querySelectorAll('th').forEach((header, index) => {
             header.style.cursor = 'pointer';
-            header.addEventListener('click', () => sortTable(index));
+            header.addEventListener('click', () => sortTable(index, header));
         });
 
-        function sortTable(columnIndex) {
+        function sortTable(columnIndex, header) {
             const table = document.getElementById('bankTable');
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
