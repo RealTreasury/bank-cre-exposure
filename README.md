@@ -1,4 +1,19 @@
 
+# bank-cre-exposure
+
+This repository hosts the static HTML report summarizing commercial real estate exposures for September 2024.
+
+## Commit Message Style
+
+Use short commit messages that summarize what changed, for example:
+
+```
+Add link to UBPR source in footer.
+```
+
+Keeping messages concise helps everyone quickly understand the project history. Please follow this style for future commits.
+
+
 # Bank CRE Exposure
 
 This sample page demonstrates how to render commercial real estate (CRE) exposure metrics for U.S. banks. The table in `index.html` is populated using the FFIEC Uniform Bank Performance Report (UBPR) API.
@@ -36,7 +51,7 @@ The response contains a `data` array with each bank's UBPR values. Fields used i
 - `cre_to_tier1`
 
 The script in `index.html` fetches the data on page load and builds the table rows dynamically. CRE ratio values determine the risk coloring shown in the table.
-=======
+
 
 # bank-cre-exposure
 
@@ -71,5 +86,6 @@ No additional dependencies are required to view the report. To regenerate the da
 ## Contributing and Updating Data
 
 Contributions are welcome. If you have updated UBPR data or spot issues with the report, open an issue or submit a pull request. Replace the source CSV files and regenerate the summary before updating `index.html`.
+
 
 
