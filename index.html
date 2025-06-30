@@ -524,13 +524,14 @@
         const API_CONFIG = {
             // FDIC API for bank financial data
             FDIC_BASE_URL: 'https://banks.data.fdic.gov/api',
-            
+
+            // UBPR API for call report metrics
+            UBPR_BASE_URL: 'https://ubprapi.ffiec.gov/v1/financials',
+
             // Federal Reserve Economic Data API
             FRED_API_KEY: 'YOUR_FRED_API_KEY_HERE', // Replace with actual API key
-            FRED_BASE_URL: 'https://api.stlouisfed.org/fred',
-            
-            // For demo purposes, we'll use mock data
-            USE_MOCK_DATA: true
+            FRED_BASE_URL: 'https://api.stlouisfed.org/fred'
+            // Using live data; no mock values included
         };
 
         // Global variables
@@ -551,15 +552,7 @@
             updateAPIStatus('loading', 'Fetching bank data...');
 
             try {
-                // In production, you would make actual API calls here
-                if (API_CONFIG.USE_MOCK_DATA) {
-                    // Simulate API delay
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    bankData = generateMockData();
-                } else {
-                    // Actual API implementation
-                    bankData = await fetchRealBankData();
-                }
+                bankData = await fetchRealBankData();
 
                 // Process and display data
                 displayBankData(bankData);
@@ -580,63 +573,36 @@
 
         // Function to fetch real bank data from APIs
         async function fetchRealBankData() {
-            // Implementation for real API calls
-            // This would involve:
-            // 1. Fetching institution data from FDIC
-            // 2. Getting financial metrics from FFIEC Call Reports
-            // 3. Calculating ratios
-            
-            const banks = [];
-            
-            // Example FDIC API call (requires proper authentication)
-            // const response = await fetch(`${API_CONFIG.FDIC_BASE_URL}/institutions`, {
-            //     headers: {
-            //         'Accept': 'application/json',
-            //         'X-Api-Key': 'YOUR_API_KEY'
-            //     }
-            // });
-            
-            return banks;
-        }
+            const url = `${API_CONFIG.UBPR_BASE_URL}?as_of=2024-09-30&top=100&sort=assets&order=desc`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('UBPR request failed');
+            }
 
-        // Generate mock data for demonstration
-        function generateMockData() {
-            const mockBanks = [
-                { name: "PROVIDENT BK", assets: 24024763, netLoansToAssets: 77.46, nonCurrToAssets: 0.48, cdLoansRatio: 38.08, creLoansRatio: 564.79 },
-                { name: "VALLEY NB", assets: 62089154, netLoansToAssets: 79.97, nonCurrToAssets: 0.60, cdLoansRatio: 57.13, creLoansRatio: 518.21 },
-                { name: "FLAGSTAR BK NA", assets: 114306851, netLoansToAssets: 63.14, nonCurrToAssets: 4.48, cdLoansRatio: 33.45, creLoansRatio: 467.02 },
-                { name: "UMPQUA BK", assets: 51904432, netLoansToAssets: 71.57, nonCurrToAssets: 0.45, cdLoansRatio: 51.58, creLoansRatio: 404.90 },
-                { name: "BANK OZK", assets: 37441804, netLoansToAssets: 76.91, nonCurrToAssets: 0.60, cdLoansRatio: 182.05, creLoansRatio: 403.62 },
-                { name: "WASHINGTON FED BK", assets: 28050298, netLoansToAssets: 74.59, nonCurrToAssets: 0.33, cdLoansRatio: 70.89, creLoansRatio: 395.27 },
-                { name: "MERCHANTS BK OF IN", assets: 18593873, netLoansToAssets: 78.00, nonCurrToAssets: 1.45, cdLoansRatio: 90.87, creLoansRatio: 392.45 },
-                { name: "FIRST INTRST BK", assets: 29531845, netLoansToAssets: 60.35, nonCurrToAssets: 1.07, cdLoansRatio: 48.50, creLoansRatio: 389.50 },
-                { name: "ATLANTIC UNION BK", assets: 24685834, netLoansToAssets: 73.68, nonCurrToAssets: 0.28, cdLoansRatio: 59.32, creLoansRatio: 385.49 },
-                { name: "GLACIER BK", assets: 28188019, netLoansToAssets: 60.39, nonCurrToAssets: 0.16, cdLoansRatio: 68.88, creLoansRatio: 380.69 },
-                { name: "SIMMONS BK", assets: 27232691, netLoansToAssets: 62.83, nonCurrToAssets: 0.59, cdLoansRatio: 101.26, creLoansRatio: 373.05 },
-                { name: "BANC OF CA", assets: 33345197, netLoansToAssets: 69.88, nonCurrToAssets: 0.75, cdLoansRatio: 90.79, creLoansRatio: 365.59 },
-                { name: "ROCKLAND TC", assets: 19415918, netLoansToAssets: 73.20, nonCurrToAssets: 0.73, cdLoansRatio: 35.42, creLoansRatio: 356.47 },
-                { name: "CITY NB OF FL", assets: 26189033, netLoansToAssets: 68.40, nonCurrToAssets: 0.64, cdLoansRatio: 58.96, creLoansRatio: 352.61 },
-                { name: "OLD NB", assets: 53307196, netLoansToAssets: 67.69, nonCurrToAssets: 1.22, cdLoansRatio: 52.65, creLoansRatio: 345.91 },
-                { name: "JPMORGAN CHASE BK NA", assets: 3584105000, netLoansToAssets: 37.09, nonCurrToAssets: 0.81, cdLoansRatio: 5.34, creLoansRatio: 62.61 },
-                { name: "BANK OF AMER NA", assets: 2565878000, netLoansToAssets: 41.48, nonCurrToAssets: 0.79, cdLoansRatio: 5.94, creLoansRatio: 53.68 },
-                { name: "WELLS FARGO BK NA", assets: 1698675000, netLoansToAssets: 50.84, nonCurrToAssets: 1.39, cdLoansRatio: 13.07, creLoansRatio: 91.62 },
-                { name: "CITIBANK NA", assets: 1733111000, netLoansToAssets: 37.13, nonCurrToAssets: 0.66, cdLoansRatio: 3.77, creLoansRatio: 22.38 }
-            ];
+            const json = await response.json();
+            const banks = json.data.map(item => ({
+                name: item.bank_name,
+                assets: item.total_assets,
+                netLoansToAssets: item.net_loans_assets,
+                nonCurrToAssets: item.noncurrent_assets_pct,
+                cdLoansRatio: item.cd_to_tier1,
+                creLoansRatio: item.cre_to_tier1
+            }));
 
-            // Sort by assets (descending) and assign ranks
-            mockBanks.sort((a, b) => b.assets - a.assets);
-            mockBanks.forEach((bank, index) => {
+            // Rank by assets
+            banks.sort((a, b) => b.assets - a.assets);
+            banks.forEach((bank, index) => {
                 bank.assetsRank = index + 1;
             });
 
-            // Sort by CRE ratio (descending) and assign CRE ranks
-            const sortedByCRE = [...mockBanks].sort((a, b) => b.creLoansRatio - a.creLoansRatio);
+            // Rank by CRE ratio
+            const sortedByCRE = [...banks].sort((a, b) => b.creLoansRatio - a.creLoansRatio);
             sortedByCRE.forEach((bank, index) => {
                 bank.creRank = index + 1;
             });
 
-            // Add risk classification
-            mockBanks.forEach(bank => {
+            // Risk classification
+            banks.forEach(bank => {
                 if (bank.creLoansRatio > 400) {
                     bank.riskLevel = 'high';
                 } else if (bank.creLoansRatio >= 300) {
@@ -646,8 +612,9 @@
                 }
             });
 
-            return mockBanks;
+            return banks;
         }
+
 
         // Display bank data in table
         function displayBankData(data) {
