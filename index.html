@@ -396,10 +396,10 @@
         <div class="report-content">
             <div class="filters">
                 <input type="text" id="searchBox" class="search-box" placeholder="Search bank names...">
-                <button class="filter-btn active" onclick="filterTable('all')">All Banks</button>
-                <button class="filter-btn" onclick="filterTable('high')">High Risk (>400%)</button>
-                <button class="filter-btn" onclick="filterTable('medium')">Medium Risk (300-400%)</button>
-                <button class="filter-btn" onclick="filterTable('large')">Large Banks (>$100B)</button>
+                <button class="filter-btn active" onclick="filterTable('all', event)">All Banks</button>
+                <button class="filter-btn" onclick="filterTable('high', event)">High Risk (>400%)</button>
+                <button class="filter-btn" onclick="filterTable('medium', event)">Medium Risk (300-400%)</button>
+                <button class="filter-btn" onclick="filterTable('large', event)">Large Banks (>$100B)</button>
             </div>
 
             <div class="table-container">
@@ -416,328 +416,7 @@
                             <th>CRE Loans to Tier 1 Cap + Allowance (%)</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td class="rank-cell">86</td>
-                            <td class="rank-cell">1</td>
-                            <td class="bank-name">PROVIDENT BK</td>
-                            <td class="number-format">24,024,763</td>
-                            <td class="number-format">77.46</td>
-                            <td class="number-format">0.48</td>
-                            <td class="number-format">38.08</td>
-                            <td class="number-format"><span class="high-risk">564.79</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">41</td>
-                            <td class="rank-cell">2</td>
-                            <td class="bank-name">VALLEY NB</td>
-                            <td class="number-format">62,089,154</td>
-                            <td class="number-format">79.97</td>
-                            <td class="number-format">0.60</td>
-                            <td class="number-format">57.13</td>
-                            <td class="number-format"><span class="high-risk">518.21</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">29</td>
-                            <td class="rank-cell">3</td>
-                            <td class="bank-name">FLAGSTAR BK NA</td>
-                            <td class="number-format">114,306,851</td>
-                            <td class="number-format">63.14</td>
-                            <td class="number-format">4.48</td>
-                            <td class="number-format">33.45</td>
-                            <td class="number-format"><span class="high-risk">467.02</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">46</td>
-                            <td class="rank-cell">4</td>
-                            <td class="bank-name">UMPQUA BK</td>
-                            <td class="number-format">51,904,432</td>
-                            <td class="number-format">71.57</td>
-                            <td class="number-format">0.45</td>
-                            <td class="number-format">51.58</td>
-                            <td class="number-format"><span class="high-risk">404.90</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">61</td>
-                            <td class="rank-cell">5</td>
-                            <td class="bank-name">BANK OZK</td>
-                            <td class="number-format">37,441,804</td>
-                            <td class="number-format">76.91</td>
-                            <td class="number-format">0.60</td>
-                            <td class="number-format">182.05</td>
-                            <td class="number-format"><span class="high-risk">403.62</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">76</td>
-                            <td class="rank-cell">6</td>
-                            <td class="bank-name">WASHINGTON FED BK</td>
-                            <td class="number-format">28,050,298</td>
-                            <td class="number-format">74.59</td>
-                            <td class="number-format">0.33</td>
-                            <td class="number-format">70.89</td>
-                            <td class="number-format"><span class="medium-risk">395.27</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">99</td>
-                            <td class="rank-cell">7</td>
-                            <td class="bank-name">MERCHANTS BK OF IN</td>
-                            <td class="number-format">18,593,873</td>
-                            <td class="number-format">78.00</td>
-                            <td class="number-format">1.45</td>
-                            <td class="number-format">90.87</td>
-                            <td class="number-format"><span class="medium-risk">392.45</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">73</td>
-                            <td class="rank-cell">8</td>
-                            <td class="bank-name">FIRST INTRST BK</td>
-                            <td class="number-format">29,531,845</td>
-                            <td class="number-format">60.35</td>
-                            <td class="number-format">1.07</td>
-                            <td class="number-format">48.50</td>
-                            <td class="number-format"><span class="medium-risk">389.50</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">85</td>
-                            <td class="rank-cell">9</td>
-                            <td class="bank-name">ATLANTIC UNION BK</td>
-                            <td class="number-format">24,685,834</td>
-                            <td class="number-format">73.68</td>
-                            <td class="number-format">0.28</td>
-                            <td class="number-format">59.32</td>
-                            <td class="number-format"><span class="medium-risk">385.49</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">75</td>
-                            <td class="rank-cell">10</td>
-                            <td class="bank-name">GLACIER BK</td>
-                            <td class="number-format">28,188,019</td>
-                            <td class="number-format">60.39</td>
-                            <td class="number-format">0.16</td>
-                            <td class="number-format">68.88</td>
-                            <td class="number-format"><span class="medium-risk">380.69</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">79</td>
-                            <td class="rank-cell">11</td>
-                            <td class="bank-name">SIMMONS BK</td>
-                            <td class="number-format">27,232,691</td>
-                            <td class="number-format">62.83</td>
-                            <td class="number-format">0.59</td>
-                            <td class="number-format">101.26</td>
-                            <td class="number-format"><span class="medium-risk">373.05</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">65</td>
-                            <td class="rank-cell">12</td>
-                            <td class="bank-name">BANC OF CA</td>
-                            <td class="number-format">33,345,197</td>
-                            <td class="number-format">69.88</td>
-                            <td class="number-format">0.75</td>
-                            <td class="number-format">90.79</td>
-                            <td class="number-format"><span class="medium-risk">365.59</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">96</td>
-                            <td class="rank-cell">13</td>
-                            <td class="bank-name">ROCKLAND TC</td>
-                            <td class="number-format">19,415,918</td>
-                            <td class="number-format">73.20</td>
-                            <td class="number-format">0.73</td>
-                            <td class="number-format">35.42</td>
-                            <td class="number-format"><span class="medium-risk">356.47</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">82</td>
-                            <td class="rank-cell">14</td>
-                            <td class="bank-name">CITY NB OF FL</td>
-                            <td class="number-format">26,189,033</td>
-                            <td class="number-format">68.40</td>
-                            <td class="number-format">0.64</td>
-                            <td class="number-format">58.96</td>
-                            <td class="number-format"><span class="medium-risk">352.61</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">45</td>
-                            <td class="rank-cell">15</td>
-                            <td class="bank-name">OLD NB</td>
-                            <td class="number-format">53,307,196</td>
-                            <td class="number-format">67.69</td>
-                            <td class="number-format">1.22</td>
-                            <td class="number-format">52.65</td>
-                            <td class="number-format"><span class="medium-risk">345.91</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">91</td>
-                            <td class="rank-cell">16</td>
-                            <td class="bank-name">AXOS BK</td>
-                            <td class="number-format">22,890,443</td>
-                            <td class="number-format">80.64</td>
-                            <td class="number-format">1.13</td>
-                            <td class="number-format">53.26</td>
-                            <td class="number-format"><span class="medium-risk">345.44</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">89</td>
-                            <td class="rank-cell">17</td>
-                            <td class="bank-name">CATHAY BK</td>
-                            <td class="number-format">23,253,276</td>
-                            <td class="number-format">82.66</td>
-                            <td class="number-format">0.88</td>
-                            <td class="number-format">14.12</td>
-                            <td class="number-format"><span class="medium-risk">340.03</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">72</td>
-                            <td class="rank-cell">18</td>
-                            <td class="bank-name">UNITED BK</td>
-                            <td class="number-format">29,769,221</td>
-                            <td class="number-format">71.88</td>
-                            <td class="number-format">0.30</td>
-                            <td class="number-format">94.74</td>
-                            <td class="number-format"><span class="medium-risk">338.10</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">78</td>
-                            <td class="rank-cell">19</td>
-                            <td class="bank-name">UNITED CMNTY BK</td>
-                            <td class="number-format">27,304,404</td>
-                            <td class="number-format">65.22</td>
-                            <td class="number-format">0.62</td>
-                            <td class="number-format">72.32</td>
-                            <td class="number-format"><span class="medium-risk">336.30</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">53</td>
-                            <td class="rank-cell">20</td>
-                            <td class="bank-name">SOUTHSTATE BK NA</td>
-                            <td class="number-format">46,071,510</td>
-                            <td class="number-format">72.42</td>
-                            <td class="number-format">0.56</td>
-                            <td class="number-format">47.35</td>
-                            <td class="number-format"><span class="medium-risk">334.56</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">42</td>
-                            <td class="rank-cell">21</td>
-                            <td class="bank-name">SYNOVUS BK</td>
-                            <td class="number-format">59,462,777</td>
-                            <td class="number-format">71.91</td>
-                            <td class="number-format">0.73</td>
-                            <td class="number-format">43.64</td>
-                            <td class="number-format"><span class="medium-risk">333.00</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">81</td>
-                            <td class="rank-cell">22</td>
-                            <td class="bank-name">AMERIS BK</td>
-                            <td class="number-format">26,308,233</td>
-                            <td class="number-format">80.52</td>
-                            <td class="number-format">0.50</td>
-                            <td class="number-format">70.92</td>
-                            <td class="number-format"><span class="medium-risk">329.88</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">48</td>
-                            <td class="rank-cell">23</td>
-                            <td class="bank-name">PINNACLE BK</td>
-                            <td class="number-format">50,562,077</td>
-                            <td class="number-format">67.45</td>
-                            <td class="number-format">0.36</td>
-                            <td class="number-format">68.35</td>
-                            <td class="number-format"><span class="medium-risk">320.26</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">100</td>
-                            <td class="rank-cell">24</td>
-                            <td class="bank-name">CENTRAL TR BK</td>
-                            <td class="number-format">18,578,011</td>
-                            <td class="number-format">61.66</td>
-                            <td class="number-format">0.30</td>
-                            <td class="number-format">51.66</td>
-                            <td class="number-format"><span class="medium-risk">313.74</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">66</td>
-                            <td class="rank-cell">25</td>
-                            <td class="bank-name">FULTON BK NA</td>
-                            <td class="number-format">32,059,530</td>
-                            <td class="number-format">74.29</td>
-                            <td class="number-format">0.84</td>
-                            <td class="number-format">37.28</td>
-                            <td class="number-format"><span class="medium-risk">312.50</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">94</td>
-                            <td class="rank-cell">26</td>
-                            <td class="bank-name">WILMINGTON SVG FUND SCTY FSB</td>
-                            <td class="number-format">20,807,733</td>
-                            <td class="number-format">63.28</td>
-                            <td class="number-format">0.91</td>
-                            <td class="number-format">37.00</td>
-                            <td class="number-format"><span class="medium-risk">309.97</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">39</td>
-                            <td class="rank-cell">27</td>
-                            <td class="bank-name">WEBSTER BK NA</td>
-                            <td class="number-format">79,376,267</td>
-                            <td class="number-format">64.73</td>
-                            <td class="number-format">0.81</td>
-                            <td class="number-format">22.11</td>
-                            <td class="number-format"><span class="medium-risk">303.78</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">92</td>
-                            <td class="rank-cell">28</td>
-                            <td class="bank-name">CENTENNIAL BK</td>
-                            <td class="number-format">22,747,374</td>
-                            <td class="number-format">63.79</td>
-                            <td class="number-format">0.68</td>
-                            <td class="number-format">95.21</td>
-                            <td class="number-format"><span class="medium-risk">302.86</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">1</td>
-                            <td class="rank-cell">29</td>
-                            <td class="bank-name">JPMORGAN CHASE BK NA</td>
-                            <td class="number-format">3,584,105,000</td>
-                            <td class="number-format">37.09</td>
-                            <td class="number-format">0.81</td>
-                            <td class="number-format">5.34</td>
-                            <td class="number-format"><span class="low-risk">62.61</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">2</td>
-                            <td class="rank-cell">30</td>
-                            <td class="bank-name">BANK OF AMER NA</td>
-                            <td class="number-format">2,565,878,000</td>
-                            <td class="number-format">41.48</td>
-                            <td class="number-format">0.79</td>
-                            <td class="number-format">5.94</td>
-                            <td class="number-format"><span class="low-risk">53.68</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">4</td>
-                            <td class="rank-cell">31</td>
-                            <td class="bank-name">WELLS FARGO BK NA</td>
-                            <td class="number-format">1,698,675,000</td>
-                            <td class="number-format">50.84</td>
-                            <td class="number-format">1.39</td>
-                            <td class="number-format">13.07</td>
-                            <td class="number-format"><span class="low-risk">91.62</span></td>
-                        </tr>
-                        <tr>
-                            <td class="rank-cell">3</td>
-                            <td class="rank-cell">32</td>
-                            <td class="bank-name">CITIBANK NA</td>
-                            <td class="number-format">1,733,111,000</td>
-                            <td class="number-format">37.13</td>
-                            <td class="number-format">0.66</td>
-                            <td class="number-format">3.77</td>
-                            <td class="number-format"><span class="low-risk">22.38</span></td>
-                        </tr>
-                    </tbody>
+                    <tbody id="bankTableBody"><tr><td colspan="8">Loading...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -749,6 +428,49 @@
     </div>
 
     <script>
+        async function loadUBPRData() {
+            const endpoint = 'https://ubprapi.ffiec.gov/v1/financials';
+            const params = new URLSearchParams({
+                as_of: '2024-09-30',
+                top: 30,
+                sort: 'assets',
+                order: 'desc'
+            });
+
+            try {
+                const response = await fetch(`${endpoint}?${params.toString()}`);
+                const result = await response.json();
+                const tbody = document.getElementById('bankTableBody');
+                tbody.innerHTML = '';
+
+                result.data.forEach((bank, idx) => {
+                    const tr = document.createElement('tr');
+
+                    const creRatio = parseFloat(bank.cre_to_tier1);
+                    const riskClass = creRatio > 400 ? 'high-risk'
+                        : creRatio >= 300 ? 'medium-risk'
+                        : 'low-risk';
+
+                    tr.innerHTML = `
+                        <td class="rank-cell">${bank.assets_rank || idx + 1}</td>
+                        <td class="rank-cell">${bank.cre_rank || ''}</td>
+                        <td class="bank-name">${bank.bank_name}</td>
+                        <td class="number-format">${(+bank.total_assets).toLocaleString()}</td>
+                        <td class="number-format">${parseFloat(bank.net_loans_assets).toFixed(2)}</td>
+                        <td class="number-format">${parseFloat(bank.noncurrent_assets_pct).toFixed(2)}</td>
+                        <td class="number-format">${parseFloat(bank.cd_to_tier1).toFixed(2)}</td>
+                        <td class="number-format"><span class="${riskClass}">${creRatio.toFixed(2)}</span></td>
+                    `;
+
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error('UBPR request failed', err);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadUBPRData);
+
         // Search functionality
         document.getElementById('searchBox').addEventListener('input', function() {
             const searchTerm = this.value.toLowerCase();
@@ -761,10 +483,10 @@
         });
 
         // Filter functionality
-        function filterTable(filterType) {
+        function filterTable(filterType, event) {
             const rows = document.querySelectorAll('#bankTable tbody tr');
             const buttons = document.querySelectorAll('.filter-btn');
-            
+
             // Update active button
             buttons.forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
@@ -808,10 +530,10 @@
         // Add sort functionality
         document.querySelectorAll('th').forEach((header, index) => {
             header.style.cursor = 'pointer';
-            header.addEventListener('click', () => sortTable(index));
+            header.addEventListener('click', () => sortTable(index, header));
         });
 
-        function sortTable(columnIndex) {
+        function sortTable(columnIndex, header) {
             const table = document.getElementById('bankTable');
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
