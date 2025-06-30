@@ -1,3 +1,14 @@
+
+# bank-cre-exposure
+
+This repository contains an HTML report summarizing commercial real estate exposure for banks.
+
+## Usage
+
+Open `index.html` in your browser to view the report.
+
+Common color variables and base page styles are defined in `assets/css/shared.css`. Edit this file to adjust the theme across the report.
+
 # Commercial Real Estate Exposure Report
 
 This repository hosts a static HTML report that summarizes U.S. bank exposure to commercial real estate (CRE) loans. The figures in `index.html` were generated using data pulled from the FDIC's Uniform Bank Performance Reports (UBPR) for September 2024. The goal is to provide a quick reference on CRE concentrations across the banking sector.
@@ -21,3 +32,4 @@ No additional dependencies are required to view the report. To regenerate the da
 ## Contributing and Updating Data
 
 Contributions are welcome. If you have updated UBPR data or spot issues with the report, open an issue or submit a pull request. Replace the source CSV files and regenerate the summary before updating `index.html`.
+
