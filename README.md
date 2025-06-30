@@ -38,7 +38,7 @@ https://ubprapi.ffiec.gov/v1/financials
 **Example request**
 
 ```
-https://ubprapi.ffiec.gov/v1/financials?as_of=2024-09-30&top=30&sort=assets&order=desc
+https://ubprapi.ffiec.gov/v1/financials?as_of=2024-09-30&top=100&sort=assets&order=desc
 ```
 
 The response contains a `data` array with each bank's UBPR values. Fields used in this demo include:
