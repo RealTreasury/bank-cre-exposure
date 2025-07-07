@@ -1,0 +1,17 @@
+{
+  "name": "bank-cre-exposure",
+  "version": "1.0.0",
+  "description": "This repository hosts the static HTML report summarizing commercial real estate exposures for September 2024.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:ejs": "node -e \"console.log('EJS installed:', require('ejs').VERSION)\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "ejs": "^3.1.10"
+  }
+}
