@@ -468,6 +468,10 @@
                 <div class="stat-number loading" id="statHighRiskCount">--</div>
                 <div class="stat-label">Banks > 400% CRE</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-number loading" id="statTenYear">--.--%</div>
+                <div class="stat-label">10-Year Treasury</div>
+            </div>
         </div>
 
         <div class="report-content">
@@ -541,6 +545,7 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadBankData();
+            fetchMarketData();
         });
 
         // Main function to load bank data
@@ -613,6 +618,26 @@
             });
 
             return banks;
+        }
+
+        // Fetch latest market indicator (e.g., 10-year Treasury yield)
+        async function fetchMarketData() {
+            try {
+                const url = `${API_CONFIG.FRED_BASE_URL}/series/observations?series_id=DGS10&api_key=${API_CONFIG.FRED_API_KEY}&file_type=json&sort_order=desc&limit=1`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('FRED request failed');
+                const json = await response.json();
+                const observations = json.observations || [];
+                if (observations.length > 0) {
+                    const latest = observations[0].value;
+                    const display = parseFloat(latest).toFixed(2) + '%';
+                    const el = document.getElementById('statTenYear');
+                    el.textContent = display;
+                    el.classList.remove('loading');
+                }
+            } catch (err) {
+                console.error('Error fetching market data:', err);
+            }
         }
 
 

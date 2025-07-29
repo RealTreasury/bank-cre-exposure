@@ -52,6 +52,10 @@ The response contains a `data` array with each bank's UBPR values. Fields used i
 
 The script in `index.html` fetches the data on page load and builds the table rows dynamically. CRE ratio values determine the risk coloring shown in the table.
 
+## Market Data
+
+The report can also display market indicators sourced from the Federal Reserve's FRED service. To enable this feature you need a FRED API key. Register for a key at [fred.stlouisfed.org](https://fred.stlouisfed.org/). Once obtained, set the value of `API_CONFIG.FRED_API_KEY` in `index.html`.
+
 
 # bank-cre-exposure
 
