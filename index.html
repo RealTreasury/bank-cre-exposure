@@ -530,7 +530,8 @@
             FDIC_BASE_URL: 'https://banks.data.fdic.gov/api',
 
             // UBPR API for call report metrics
-            UBPR_BASE_URL: 'https://ubprapi.ffiec.gov/v1/financials',
+            // Updated endpoint per FFIEC guidance
+            UBPR_BASE_URL: 'https://api.ffiec.gov/public/v2/ubpr/financials',
 
             // Federal Reserve Economic Data API
             FRED_API_KEY: 'YOUR_FRED_API_KEY_HERE', // Replace with actual API key
@@ -623,7 +624,8 @@
         // Fetch latest market indicator (e.g., 10-year Treasury yield)
         async function fetchMarketData() {
             try {
-                const url = `${API_CONFIG.FRED_BASE_URL}/series/observations?series_id=DGS10&api_key=${API_CONFIG.FRED_API_KEY}&file_type=json&sort_order=desc&limit=1`;
+                // Call serverless proxy to avoid FRED CORS restrictions
+                const url = `/api/fred?series_id=DGS10&api_key=${API_CONFIG.FRED_API_KEY}`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('FRED request failed');
                 const json = await response.json();
