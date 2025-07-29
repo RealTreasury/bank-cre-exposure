@@ -25,7 +25,7 @@ The UBPR API provides call report data in JSON format.
 **Endpoint**
 
 ```
-https://ubprapi.ffiec.gov/v1/financials
+https://api.ffiec.gov/public/v2/ubpr/financials
 ```
 
 ### Common parameters
@@ -38,7 +38,7 @@ https://ubprapi.ffiec.gov/v1/financials
 **Example request**
 
 ```
-https://ubprapi.ffiec.gov/v1/financials?as_of=2024-09-30&top=100&sort=assets&order=desc
+https://api.ffiec.gov/public/v2/ubpr/financials?as_of=2024-09-30&top=100&sort=assets&order=desc
 ```
 
 The response contains a `data` array with each bank's UBPR values. Fields used in this demo include:
@@ -55,6 +55,8 @@ The script in `index.html` fetches the data on page load and builds the table ro
 ## Market Data
 
 The report can also display market indicators sourced from the Federal Reserve's FRED service. To enable this feature you need a FRED API key. Register for a key at [fred.stlouisfed.org](https://fred.stlouisfed.org/). Once obtained, set the value of `API_CONFIG.FRED_API_KEY` in `index.html`.
+
+Because the FRED API does not send the required CORS headers, the request must be proxied through a small serverless function. Host a simple endpoint (for example with Netlify Functions or Vercel) that forwards the request to FRED and returns the JSON response. Update `fetchMarketData` to call this proxy path (e.g. `/api/fred`).
 
 
 # bank-cre-exposure
