@@ -534,7 +534,7 @@
             UBPR_BASE_URL: 'https://api.ffiec.gov/public/v2/ubpr/financials',
 
             // Federal Reserve Economic Data API
-            FRED_API_KEY: 'YOUR_FRED_API_KEY_HERE', // Replace with actual API key
+            // FRED_API_KEY stored on the server side via Netlify Function
             FRED_BASE_URL: 'https://api.stlouisfed.org/fred'
             // Using live data; no mock values included
         };
@@ -625,7 +625,7 @@
         async function fetchMarketData() {
             try {
                 // Call serverless proxy to avoid FRED CORS restrictions
-                const url = `/api/fred?series_id=DGS10&api_key=${API_CONFIG.FRED_API_KEY}`;
+                const url = `/api/fred?series_id=DGS10`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('FRED request failed');
                 const json = await response.json();

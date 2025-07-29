@@ -54,9 +54,15 @@ The script in `index.html` fetches the data on page load and builds the table ro
 
 ## Market Data
 
-The report can also display market indicators sourced from the Federal Reserve's FRED service. To enable this feature you need a FRED API key. Register for a key at [fred.stlouisfed.org](https://fred.stlouisfed.org/). Once obtained, set the value of `API_CONFIG.FRED_API_KEY` in `index.html`.
+The report can also display market indicators sourced from the Federal Reserve's FRED service. Requests are proxied through a Netlify Function so the API key can remain private. Deploy this repository to Netlify and set an environment variable named `FRED_API_KEY` with your key.
 
-Because the FRED API does not send the required CORS headers, the request must be proxied through a small serverless function. Host a simple endpoint (for example with Netlify Functions or Vercel) that forwards the request to FRED and returns the JSON response. Update `fetchMarketData` to call this proxy path (e.g. `/api/fred`).
+The proxy lives at `netlify/functions/fred.js` and forwards any query string it receives to the FRED API while appending the key. Once deployed, the client simply calls `/api/fred?series_id=DGS10` and no key is exposed in `index.html`.
+
+### Deploying the FRED proxy
+
+1. Create a new site on Netlify and connect this repository.
+2. In **Site settings → Environment variables**, add `FRED_API_KEY` with your FRED key.
+3. Deploy the site. Requests to `/api/fred` will be served by the function defined in `netlify/functions/fred.js`.
 
 
 # bank-cre-exposure
