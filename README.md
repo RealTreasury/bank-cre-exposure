@@ -93,5 +93,11 @@ No additional dependencies are required to view the report. To regenerate the da
 
 Contributions are welcome. If you have updated UBPR data or spot issues with the report, open an issue or submit a pull request. Replace the source CSV files and regenerate the summary before updating `index.html`.
 
+## Deployment Notes
+
+- `index.html` loads data from `https://api.ffiec.gov/public/v2/ubpr/financials`.
+- The repository has no references to the deprecated `ubprapi.ffiec.gov` endpoint.
+- Ensure any hosting environment serves this `index.html` so the current API is used.
+
 
 
