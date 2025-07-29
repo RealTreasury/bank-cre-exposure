@@ -89,6 +89,10 @@ python3 -m http.server
 
 No additional dependencies are required to view the report. To regenerate the data you will need Python 3 along with packages such as `pandas` and `requests` for fetching and cleaning the UBPR files.
 
+### Development
+
+Run `npm install` to install the dev dependencies. Then execute `npm run test:ejs` to verify EJS setup.
+
 ## Contributing and Updating Data
 
 Contributions are welcome. If you have updated UBPR data or spot issues with the report, open an issue or submit a pull request. Replace the source CSV files and regenerate the summary before updating `index.html`.
