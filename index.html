@@ -625,8 +625,15 @@
         // Fetch latest market indicator (e.g., 10-year Treasury yield)
         async function fetchMarketData() {
             try {
+                // Determine base URL for Netlify function when running locally
+                const isLocal =
+                    window.location.hostname === 'localhost' ||
+                    window.location.hostname === '127.0.0.1' ||
+                    window.location.protocol === 'file:';
+                const base = isLocal ? 'http://localhost:8888' : '';
+
                 // Call serverless proxy to avoid FRED CORS restrictions
-                const url = `/api/fred?series_id=DGS10`;
+                const url = `${base}/.netlify/functions/fred?series_id=DGS10`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('FRED request failed');
                 const json = await response.json();
@@ -640,6 +647,9 @@
                 }
             } catch (err) {
                 console.error('Error fetching market data:', err);
+                const el = document.getElementById('statTenYear');
+                el.textContent = 'N/A';
+                el.classList.remove('loading');
             }
         }
 
