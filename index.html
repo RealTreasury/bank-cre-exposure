@@ -530,8 +530,8 @@
             FDIC_BASE_URL: 'https://banks.data.fdic.gov/api',
 
             // UBPR API for call report metrics
-            // Updated endpoint per FFIEC guidance
-            UBPR_BASE_URL: 'https://api.ffiec.gov/public/v2/ubpr/financials',
+            // Updated to point to Netlify Function proxy
+            UBPR_BASE_URL: '/api/ffiec',
 
             // Federal Reserve Economic Data API
             // FRED_API_KEY stored on the server side via Netlify Function
@@ -579,20 +579,21 @@
 
         // Function to fetch real bank data from APIs
         async function fetchRealBankData() {
-            const url = `${API_CONFIG.UBPR_BASE_URL}?as_of=2024-09-30&top=100&sort=assets&order=desc`;
+            const url = `${API_CONFIG.UBPR_BASE_URL}?date=2024-09-30&top=100&orderBy=assets&orderDirection=desc`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('UBPR request failed');
             }
 
             const json = await response.json();
-            const banks = json.data.map(item => ({
-                name: item.bank_name,
-                assets: item.total_assets,
-                netLoansToAssets: item.net_loans_assets,
-                nonCurrToAssets: item.noncurrent_assets_pct,
-                cdLoansRatio: item.cd_to_tier1,
-                creLoansRatio: item.cre_to_tier1
+            const records = Array.isArray(json) ? json : (json.data || []);
+            const banks = records.map(item => ({
+                name: item.bank_name || item.BANK_NAME,
+                assets: Number(item.total_assets ?? item.TOTAL_ASSETS ?? 0),
+                netLoansToAssets: Number(item.net_loans_assets ?? item.NET_LOANS_ASSETS ?? 0),
+                nonCurrToAssets: Number(item.noncurrent_assets_pct ?? item.NONCURRENT_ASSETS_PCT ?? 0),
+                cdLoansRatio: Number(item.cd_to_tier1 ?? item.CD_TO_TIER1 ?? 0),
+                creLoansRatio: Number(item.cre_to_tier1 ?? item.CRE_TO_TIER1 ?? 0)
             }));
 
             // Rank by assets
