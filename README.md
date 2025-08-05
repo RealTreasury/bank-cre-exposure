@@ -111,3 +111,26 @@ Contributions are welcome. If you have updated UBPR data or spot issues with the
 
 
 
+
+## FFIEC PWS API Script
+
+The repository includes a small Python helper `ffiec_api.py` for accessing the FFIEC Public Web Service (PWS).
+
+### Running the example
+
+1. Install dependencies:
+   ```bash
+   pip install requests
+   ```
+2. Provide your PWS credentials as environment variables:
+   ```bash
+   export PWS_USERNAME="your_username"
+   export PWS_PASSWORD="your_password"
+   export PWS_TOKEN="your_security_token"
+   ```
+3. Execute the script:
+   ```bash
+   python ffiec_api.py
+   ```
+   The example in the `__main__` block fetches an institution record and saves it to `institution.json`.
+
