@@ -64,6 +64,15 @@ The proxy lives at `netlify/functions/fred.js` and forwards any query string it 
 2. In **Site settings → Environment variables**, add `FRED_API_KEY` with your FRED key.
 3. Deploy the site. Requests to `/api/fred` will be served by the function defined in `netlify/functions/fred.js`.
 
+### FRED API script
+
+For local experimentation the `fred_api.py` helper fetches series observations directly from FRED:
+
+```bash
+export FRED_API_KEY=your_key
+python fred_api.py
+```
+
 
 # bank-cre-exposure
 
