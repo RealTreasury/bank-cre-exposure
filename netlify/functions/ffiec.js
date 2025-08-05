@@ -20,27 +20,20 @@ exports.handler = async (event) => {
     };
   }
 
-  // Parse the endpoint from query parameters
-  const { endpoint = 'UBPR/Search', ...params } = event.queryStringParameters || {};
-
   // Create Basic Auth header
   const authString = `${username}:${password}${token}`;
   const authHeader = `Basic ${Buffer.from(authString).toString('base64')}`;
 
-  // Default parameters for UBPR search
-  const defaultParams = {
-    date: '2024-09-30',
-    top: '100',
-    orderBy: 'assets',
-    orderDirection: 'desc'
-  };
+  // Build query parameters for UBPR search
+  const queryParams = event.queryStringParameters || {};
+  const params = new URLSearchParams({
+    date: queryParams.date || '2024-09-30',
+    top: queryParams.top || '100',
+    orderBy: queryParams.orderBy || 'assets',
+    orderDirection: queryParams.orderDirection || 'desc'
+  });
 
-  // Merge with provided parameters
-  const finalParams = { ...defaultParams, ...params };
-  
-  // Build query string
-  const queryString = new URLSearchParams(finalParams).toString();
-  const path = `/public/PWS/${endpoint}?${queryString}`;
+  const path = `/public/PWS/UBPR/Search?${params.toString()}`;
 
   // Make the request to FFIEC API
   return new Promise((resolve) => {
@@ -69,8 +62,12 @@ exports.handler = async (event) => {
         try {
           responseBody = JSON.parse(data);
         } catch (e) {
-          // If not JSON, return raw data
-          responseBody = { rawData: data };
+          // If not JSON, return error
+          responseBody = { 
+            error: 'Invalid JSON response from FFIEC API', 
+            statusCode: res.statusCode,
+            rawData: data.substring(0, 500) // First 500 chars for debugging
+          };
         }
 
         resolve({
