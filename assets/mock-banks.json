@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Sample Bank A",
+    "assets": 1000000000,
+    "netLoansToAssets": 75.0,
+    "nonCurrToAssets": 2.5,
+    "cdLoansRatio": 110.0,
+    "creLoansRatio": 320.0
+  },
+  {
+    "name": "Sample Bank B",
+    "assets": 800000000,
+    "netLoansToAssets": 65.0,
+    "nonCurrToAssets": 1.0,
+    "cdLoansRatio": 90.0,
+    "creLoansRatio": 250.0
+  }
+]

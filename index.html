@@ -558,14 +558,19 @@
             updateAPIStatus('loading', 'Fetching bank data...');
 
             try {
-                bankData = await fetchRealBankData();
+                const result = await fetchRealBankData();
+                bankData = result.banks;
 
                 // Process and display data
                 displayBankData(bankData);
                 updateStatistics(bankData);
-                updateAPIStatus('connected', 'Connected to data sources');
+                if (result.isSample) {
+                    updateAPIStatus('error', 'Using sample data');
+                } else {
+                    updateAPIStatus('connected', 'Connected to data sources');
+                }
                 updateLastUpdated();
-                
+
             } catch (error) {
                 console.error('Error loading bank data:', error);
                 showError('Failed to load bank data. Please try again later.');
@@ -580,20 +585,31 @@
         // Function to fetch real bank data from APIs
         async function fetchRealBankData() {
             const url = `${API_CONFIG.UBPR_BASE_URL}?as_of=2024-09-30&top=100&sort=assets&order=desc`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('UBPR request failed');
+            let data;
+            let isSample = false;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('UBPR request failed');
+                }
+                const json = await response.json();
+                data = json.data.map(item => ({
+                    name: item.bank_name,
+                    assets: item.total_assets,
+                    netLoansToAssets: item.net_loans_assets,
+                    nonCurrToAssets: item.noncurrent_assets_pct,
+                    cdLoansRatio: item.cd_to_tier1,
+                    creLoansRatio: item.cre_to_tier1
+                }));
+            } catch (err) {
+                console.error('Error fetching real data, loading sample:', err);
+                const response = await fetch('assets/mock-banks.json');
+                data = await response.json();
+                isSample = true;
             }
 
-            const json = await response.json();
-            const banks = json.data.map(item => ({
-                name: item.bank_name,
-                assets: item.total_assets,
-                netLoansToAssets: item.net_loans_assets,
-                nonCurrToAssets: item.noncurrent_assets_pct,
-                cdLoansRatio: item.cd_to_tier1,
-                creLoansRatio: item.cre_to_tier1
-            }));
+            const banks = data;
 
             // Rank by assets
             banks.sort((a, b) => b.assets - a.assets);
@@ -618,7 +634,7 @@
                 }
             });
 
-            return banks;
+            return { banks, isSample };
         }
 
         // Fetch latest market indicator (e.g., 10-year Treasury yield)
