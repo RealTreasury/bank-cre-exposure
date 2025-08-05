@@ -73,6 +73,32 @@ export FRED_API_KEY=your_key
 python fred_api.py
 ```
 
+## Netlify environment variables
+
+The Netlify Functions in this repo need a few secrets for both local and deployed runs:
+
+| Variable | Purpose |
+| --- | --- |
+| `FRED_API_KEY` | API key for the Federal Reserve Economic Data service. |
+| `FFIEC_USERNAME` | Username for the FFIEC Public Web Service. |
+| `FFIEC_PASSWORD` | Password for the FFIEC Public Web Service. |
+| `FFIEC_TOKEN` | Security token appended to your FFIEC password. |
+
+For local development, copy `.env.example` to `.env`, fill in your values, then run:
+
+```bash
+netlify dev
+```
+
+To configure the variables in your Netlify site, use the CLI:
+
+```bash
+netlify env:set FRED_API_KEY your_key
+netlify env:set FFIEC_USERNAME your_username
+netlify env:set FFIEC_PASSWORD your_password
+netlify env:set FFIEC_TOKEN your_token
+```
+
 
 # bank-cre-exposure
 
