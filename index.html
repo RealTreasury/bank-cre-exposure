@@ -523,7 +523,7 @@
         </div>
     </div>
 
-    <script>
+        <script>
         // API Configuration
         const API_CONFIG = {
             // FDIC API for bank financial data
@@ -531,7 +531,7 @@
 
             // UBPR API for call report metrics
             // Updated to point to Netlify Function proxy
-            UBPR_BASE_URL: '/api/ffiec',
+            UBPR_BASE_URL: '/api', // CORRECTED: Point to the proxy root
 
             // Federal Reserve Economic Data API
             // FRED_API_KEY stored on the server side via Netlify Function
@@ -580,7 +580,8 @@
         // Function to fetch real bank data from APIs
         async function fetchRealBankData() {
             try {
-                const url = `${API_CONFIG.UBPR_BASE_URL}?date=2024-09-30&top=100&orderBy=assets&orderDirection=desc`;
+                // CORRECTED: Use the proxy path for the FFIEC function
+                const url = `${API_CONFIG.UBPR_BASE_URL}/ffiec?date=2024-09-30&top=100&orderBy=assets&orderDirection=desc`;
                 const response = await fetch(url);
 
                 if (!response.ok) {
@@ -676,15 +677,8 @@
         // Fetch latest market indicator (e.g., 10-year Treasury yield)
         async function fetchMarketData() {
             try {
-                // Determine base URL for Netlify function when running locally
-                const isLocal =
-                    window.location.hostname === 'localhost' ||
-                    window.location.hostname === '127.0.0.1' ||
-                    window.location.protocol === 'file:';
-                const base = isLocal ? 'http://localhost:8888' : '';
-
-                // Call serverless proxy to avoid FRED CORS restrictions
-                const url = `${base}/.netlify/functions/fred?series_id=DGS10`;
+                // CORRECTED: Call the FRED proxy function via the consistent /api/ path
+                const url = `/api/fred?series_id=DGS10`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('FRED request failed');
                 const json = await response.json();
@@ -938,5 +932,6 @@
             */
         }
     </script>
+
 </body>
 </html>
