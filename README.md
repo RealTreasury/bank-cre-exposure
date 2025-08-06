@@ -17,18 +17,17 @@ Keeping messages concise helps everyone quickly understand the project history. 
 
 ## WordPress Plugin
 
-The WordPress plugin lives in the `plugin/` directory.
+The WordPress plugin files are at the repository root.
 
 ### Building and installing
 
-To create a zip for upload:
+To create a zip for upload, run from the repository root:
 
 ```bash
-cd plugin
-zip -r bank-cre-exposure.zip .
+zip -r bank-cre-exposure.zip bank-cre-exposure.php assets templates readme.txt LICENSE
 ```
 
-Upload the generated `bank-cre-exposure.zip` via the WordPress admin (Plugins → Add New → Upload Plugin) or copy the `plugin/` directory into `wp-content/plugins/` for local development.
+Upload the generated `bank-cre-exposure.zip` via the WordPress admin (Plugins → Add New → Upload Plugin) or copy these files into `wp-content/plugins/bank-cre-exposure/` for local development.
 
 
 # Bank CRE Exposure
@@ -127,7 +126,7 @@ This repository contains an HTML report summarizing commercial real estate expos
 
 Open `index.html` in your browser to view the report.
 
-Common color variables and base page styles are defined in `plugin/assets/css/style.css`. Edit this file to adjust the theme across the report.
+Common color variables and base page styles are defined in `assets/css/style.css`. Edit this file to adjust the theme across the report.
 
 # Commercial Real Estate Exposure Report
 
