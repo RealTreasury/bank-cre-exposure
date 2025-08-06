@@ -29,7 +29,9 @@ if (!defined('ABSPATH')) {
     <p>
         <button id="bce-test-netlify" class="button button-primary"><?php esc_html_e('Test Netlify', 'bank-cre-exposure'); ?></button>
         <button id="bce-test-ffiec" class="button"><?php esc_html_e('Test FFIEC API', 'bank-cre-exposure'); ?></button>
+        <button id="bce-update-data" class="button">Update Data</button>
     </p>
+    <div id="status"></div>
     <pre id="bce-test-result" style="background:#fff;border:1px solid #ccc;padding:1em;max-height:300px;overflow:auto;"></pre>
 </div>
 
