@@ -41,12 +41,22 @@ async function updateData() {
         const response = await fetch(netlifyUrl + '/.netlify/functions/ffiec', {
             method: 'POST'
         });
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = text;
+        }
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status + ': ' + JSON.stringify(data));
+        }
 
         if (statusDiv) {
-            statusDiv.textContent = 'Update successful';
+            statusDiv.textContent = 'Update successful (' + response.status + ')';
         }
-        console.log(data);
+        console.log('Update response:', data);
     } catch (error) {
         console.error(error);
         const statusDiv = document.getElementById('status');
@@ -69,11 +79,22 @@ async function testNetlify() {
         }
 
         const response = await fetch(netlifyUrl + '/.netlify/functions/fred');
-        await response.json();
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = text;
+        }
+
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status + ': ' + JSON.stringify(data));
+        }
 
         if (statusDiv) {
-            statusDiv.textContent = 'Netlify test successful';
+            statusDiv.textContent = 'Netlify test successful (' + response.status + ')';
         }
+        console.log('Netlify test response:', data);
     } catch (error) {
         console.error(error);
         const statusDiv = document.getElementById('status');
