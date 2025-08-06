@@ -27,7 +27,7 @@ To create a zip for upload, run from the repository root:
 zip -r bank-cre-exposure.zip bank-cre-exposure.php assets templates readme.txt LICENSE
 ```
 
-Upload the generated `bank-cre-exposure.zip` via the WordPress admin (Plugins → Add New → Upload Plugin) or copy these files into `wp-content/plugins/bank-cre-exposure/` for local development.
+This plugin is automatically pushed to the WordPress site
 
 
 # Bank CRE Exposure
