@@ -42,5 +42,18 @@ function bce_register_admin_page() {
 add_action('admin_menu', 'bce_register_admin_page');
 
 function bce_render_admin_page() {
+    $credentials = [
+        'FRED_API_KEY'   => getenv('FRED_API_KEY') ?: get_option('FRED_API_KEY'),
+        'FFIEC_USERNAME' => getenv('FFIEC_USERNAME') ?: get_option('FFIEC_USERNAME'),
+        'FFIEC_PASSWORD' => getenv('FFIEC_PASSWORD') ?: get_option('FFIEC_PASSWORD'),
+        'FFIEC_TOKEN'    => getenv('FFIEC_TOKEN') ?: get_option('FFIEC_TOKEN'),
+    ];
+
+    foreach ($credentials as $name => $value) {
+        if (empty($value)) {
+            error_log("Bank CRE Exposure: missing credential {$name}");
+        }
+    }
+
     include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
 }
