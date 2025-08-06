@@ -13,6 +13,21 @@ Add link to UBPR source in footer.
 
 Keeping messages concise helps everyone quickly understand the project history. Please follow this style for future commits.
 
+## WordPress Plugin
+
+The WordPress plugin lives in the `plugin/` directory.
+
+### Building and installing
+
+To create a zip for upload:
+
+```bash
+cd plugin
+zip -r bank-cre-exposure.zip .
+```
+
+Upload the generated `bank-cre-exposure.zip` via the WordPress admin (Plugins → Add New → Upload Plugin) or copy the `plugin/` directory into `wp-content/plugins/` for local development.
+
 
 # Bank CRE Exposure
 
@@ -108,7 +123,7 @@ This repository contains an HTML report summarizing commercial real estate expos
 
 Open `index.html` in your browser to view the report.
 
-Common color variables and base page styles are defined in `assets/css/shared.css`. Edit this file to adjust the theme across the report.
+Common color variables and base page styles are defined in `plugin/assets/css/style.css`. Edit this file to adjust the theme across the report.
 
 # Commercial Real Estate Exposure Report
 
