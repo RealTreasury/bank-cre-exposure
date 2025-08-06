@@ -66,11 +66,11 @@ The proxy lives at `netlify/functions/fred.js` and forwards any query string it 
 
 ### FRED API script
 
-For local experimentation the `fred_api.py` helper fetches series observations directly from FRED:
+For local experimentation the `scripts/fred_api.py` helper fetches series observations directly from FRED:
 
 ```bash
 export FRED_API_KEY=your_key
-python fred_api.py
+python scripts/fred_api.py
 ```
 
 ## Netlify environment variables
@@ -149,7 +149,7 @@ Contributions are welcome. If you have updated UBPR data or spot issues with the
 
 ## FFIEC PWS API Script
 
-The repository includes a small Python helper `ffiec_api.py` for accessing the FFIEC Public Web Service (PWS).
+The repository includes a small Python helper `scripts/ffiec_api.py` for accessing the FFIEC Public Web Service (PWS).
 
 ### Running the example
 
@@ -165,7 +165,7 @@ The repository includes a small Python helper `ffiec_api.py` for accessing the F
    ```
 3. Execute the script:
    ```bash
-   python ffiec_api.py
+   python scripts/ffiec_api.py
    ```
    The example in the `__main__` block fetches an institution record and saves it to `institution.json`.
 
