@@ -44,11 +44,19 @@ function bce_register_admin_page() {
             return;
         }
         wp_enqueue_script(
-            'bce-admin',
+            'bce-admin-script',
             plugin_dir_url(__FILE__) . 'assets/js/admin.js',
             ['jquery', 'wp-util'],
-            '1.0.0',
+            '1.0.1',
             true
+        );
+
+        wp_localize_script(
+            'bce-admin-script',
+            'bce_data',
+            [
+                'netlify_url' => 'https://stirring-pixie-0b3931.netlify.app',
+            ]
         );
     });
 }

@@ -26,8 +26,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-const NETLIFY_URL = "https://stirring-pixie-0b3931.netlify.app";
-
 async function updateData() {
     try {
         const statusDiv = document.getElementById('status');
@@ -35,7 +33,7 @@ async function updateData() {
             statusDiv.innerHTML = 'Updating data... <div class="spinner"></div>';
         }
 
-        const netlifyUrl = NETLIFY_URL;
+        const netlifyUrl = bce_data.netlify_url;
         if (!netlifyUrl) {
             throw new Error('Missing Netlify URL.');
         }
@@ -65,7 +63,7 @@ async function testNetlify() {
             statusDiv.innerHTML = 'Testing Netlify... <div class="spinner"></div>';
         }
 
-        const netlifyUrl = NETLIFY_URL;
+        const netlifyUrl = bce_data.netlify_url;
         if (!netlifyUrl) {
             throw new Error('Missing Netlify URL.');
         }
