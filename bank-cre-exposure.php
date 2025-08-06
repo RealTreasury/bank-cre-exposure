@@ -27,3 +27,20 @@ function bce_render_tool() {
     return ob_get_clean();
 }
 add_shortcode('bank_cre_exposure', 'bce_render_tool');
+
+function bce_register_admin_page() {
+    add_menu_page(
+        __('Bank CRE Exposure', 'bank-cre-exposure'),
+        __('Bank CRE Exposure', 'bank-cre-exposure'),
+        'manage_options',
+        'bank-cre-exposure',
+        'bce_render_admin_page',
+        'dashicons-chart-area',
+        100
+    );
+}
+add_action('admin_menu', 'bce_register_admin_page');
+
+function bce_render_admin_page() {
+    include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
+}
