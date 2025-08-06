@@ -1,11 +1,14 @@
+import sys
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from fred_api import FRED_BASE_URL, get_series_observations
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.fred_api import FRED_BASE_URL, get_series_observations
 
 
 class TestFredAPI(unittest.TestCase):
-    @patch("fred_api.requests.get")
+    @patch("scripts.fred_api.requests.get")
     def test_get_series_observations(self, mock_get: Mock) -> None:
         mock_resp = Mock()
         mock_resp.json.return_value = {"observations": []}

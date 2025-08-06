@@ -1,7 +1,10 @@
 import base64
+import sys
+from pathlib import Path
 import unittest
 
-from ffiec_api import get_auth_headers
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.ffiec_api import get_auth_headers
 
 
 class TestAuthHeaders(unittest.TestCase):
