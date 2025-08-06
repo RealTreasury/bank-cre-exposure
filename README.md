@@ -3,6 +3,8 @@
 
 This repository hosts the static HTML report summarizing commercial real estate exposures for September 2024.
 
+Development-related tooling lives in the `dev/` directory (Netlify functions, npm configuration, and test files). These items are only needed for local development and are not required to view the static report.
+
 ## Commit Message Style
 
 Use short commit messages that summarize what changed, for example:
@@ -71,13 +73,13 @@ The script in `index.html` fetches the data on page load and builds the table ro
 
 The report can also display market indicators sourced from the Federal Reserve's FRED service. Requests are proxied through a Netlify Function so the API key can remain private. Deploy this repository to Netlify and set an environment variable named `FRED_API_KEY` with your key.
 
-The proxy lives at `netlify/functions/fred.js` and forwards any query string it receives to the FRED API while appending the key. Once deployed, the client simply calls `/api/fred?series_id=DGS10` and no key is exposed in `index.html`.
+The proxy lives at `dev/netlify/functions/fred.js` and forwards any query string it receives to the FRED API while appending the key. Once deployed, the client simply calls `/api/fred?series_id=DGS10` and no key is exposed in `index.html`.
 
 ### Deploying the FRED proxy
 
 1. Create a new site on Netlify and connect this repository.
 2. In **Site settings → Environment variables**, add `FRED_API_KEY` with your FRED key.
-3. Deploy the site. Requests to `/api/fred` will be served by the function defined in `netlify/functions/fred.js`.
+3. Deploy the site. Requests to `/api/fred` will be served by the function defined in `dev/netlify/functions/fred.js`.
 
 ### FRED API script
 
@@ -99,15 +101,17 @@ The Netlify Functions in this repo need a few secrets for both local and deploye
 | `FFIEC_PASSWORD` | Password for the FFIEC Public Web Service. |
 | `FFIEC_TOKEN` | Security token appended to your FFIEC password. |
 
-For local development, copy `.env.example` to `.env`, fill in your values, then run:
+For local development, copy `.env.example` to `.env`, fill in your values, then run from the `dev/` directory:
 
 ```bash
+cd dev
 netlify dev
 ```
 
-To configure the variables in your Netlify site, use the CLI:
+To configure the variables in your Netlify site, use the CLI from within `dev/`:
 
 ```bash
+cd dev
 netlify env:set FRED_API_KEY your_key
 netlify env:set FFIEC_USERNAME your_username
 netlify env:set FFIEC_PASSWORD your_password
@@ -147,7 +151,7 @@ No additional dependencies are required to view the report. To regenerate the da
 
 ### Development
 
-Run `npm install` to install the dev dependencies. Then execute `npm run test:ejs` to verify EJS setup.
+From the `dev/` directory run `npm install` to install the development dependencies. Then execute `npm run test:ejs` to verify EJS setup.
 
 ## Contributing and Updating Data
 
