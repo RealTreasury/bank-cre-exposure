@@ -32,14 +32,19 @@
             updateAPIStatus('loading', 'Fetching bank data...');
 
             try {
-                bankData = await fetchRealBankData();
+                const result = await fetchRealBankData();
+                bankData = result.banks;
 
                 // Process and display data
                 displayBankData(bankData);
                 updateStatistics(bankData);
-                updateAPIStatus('connected', 'Connected to data sources');
+
+                const statusMessage = result.isMock
+                    ? `Connected: using fallback data (${bankData.length} records)`
+                    : `Connected to data sources (${bankData.length} records)`;
+                updateAPIStatus('connected', statusMessage);
                 updateLastUpdated();
-                
+
             } catch (error) {
                 console.error('Error loading bank data:', error);
                 showError('Failed to load bank data. Please try again later.');
@@ -53,6 +58,8 @@
 
         // Function to fetch real bank data from APIs
         async function fetchRealBankData() {
+            let isMock = false;
+
             try {
                 const url = `${window.bce_plugin_url}assets/data/bank-data.json`;
                 const response = await fetch(url);
@@ -75,8 +82,8 @@
 
                 if (records.length === 0) {
                     console.warn('No bank records returned from API');
-                    // Return some mock data to prevent complete failure
-                    return generateMockData();
+                    isMock = true;
+                    return { banks: generateMockData(), isMock };
                 }
 
                 const banks = records.map(item => ({
@@ -111,10 +118,11 @@
                     }
                 });
 
-                return banks;
+                return { banks, isMock };
             } catch (error) {
                 console.error('Error fetching bank data:', error);
-                throw error;
+                isMock = true;
+                return { banks: generateMockData(), isMock };
             }
         }
 
