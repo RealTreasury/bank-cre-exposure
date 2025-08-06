@@ -24,5 +24,12 @@ if (!defined('ABSPATH')) {
             </li>
         <?php endforeach; ?>
     </ul>
+
+    <h2><?php esc_html_e('Connectivity Tests', 'bank-cre-exposure'); ?></h2>
+    <p>
+        <button id="bce-test-netlify" class="button button-primary"><?php esc_html_e('Test Netlify', 'bank-cre-exposure'); ?></button>
+        <button id="bce-test-ffiec" class="button"><?php esc_html_e('Test FFIEC API', 'bank-cre-exposure'); ?></button>
+    </p>
+    <pre id="bce-test-result" style="background:#fff;border:1px solid #ccc;padding:1em;max-height:300px;overflow:auto;"></pre>
 </div>
 

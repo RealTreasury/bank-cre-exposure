@@ -29,7 +29,7 @@ function bce_render_tool() {
 add_shortcode('bank_cre_exposure', 'bce_render_tool');
 
 function bce_register_admin_page() {
-    add_menu_page(
+    $hook = add_menu_page(
         __('Bank CRE Exposure', 'bank-cre-exposure'),
         __('Bank CRE Exposure', 'bank-cre-exposure'),
         'manage_options',
@@ -38,6 +38,19 @@ function bce_register_admin_page() {
         'dashicons-chart-area',
         100
     );
+
+    add_action('admin_enqueue_scripts', function ($enqueue_hook) use ($hook) {
+        if ($enqueue_hook !== $hook) {
+            return;
+        }
+        wp_enqueue_script(
+            'bce-admin',
+            plugin_dir_url(__FILE__) . 'assets/js/admin.js',
+            ['jquery', 'wp-util'],
+            '1.0.0',
+            true
+        );
+    });
 }
 add_action('admin_menu', 'bce_register_admin_page');
 
@@ -57,3 +70,62 @@ function bce_render_admin_page() {
 
     include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
 }
+
+function bce_test_netlify() {
+    $base = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL');
+    if (empty($base)) {
+        wp_send_json_error(['message' => 'Missing Netlify URL.']);
+    }
+
+    $url = rtrim($base, '/') . '/.netlify/functions/ffiec';
+    $response = wp_remote_get($url, ['timeout' => 15]);
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(['message' => $response->get_error_message()]);
+    }
+
+    $status = wp_remote_retrieve_response_code($response);
+    $body   = wp_remote_retrieve_body($response);
+
+    if ($status >= 200 && $status < 300) {
+        wp_send_json_success(['status' => $status, 'body' => $body]);
+    }
+
+    wp_send_json_error(['status' => $status, 'body' => $body]);
+}
+add_action('wp_ajax_bce_test_netlify', 'bce_test_netlify');
+
+function bce_test_ffiec() {
+    $username = getenv('FFIEC_USERNAME') ?: get_option('FFIEC_USERNAME');
+    $password = getenv('FFIEC_PASSWORD') ?: get_option('FFIEC_PASSWORD');
+    $token    = getenv('FFIEC_TOKEN') ?: get_option('FFIEC_TOKEN');
+
+    if (!$username || !$password || !$token) {
+        wp_send_json_error(['message' => 'Missing FFIEC credentials.']);
+    }
+
+    $auth = base64_encode($username . ':' . $password . $token);
+    $args = [
+        'headers' => [
+            'Authorization' => 'Basic ' . $auth,
+            'Accept'        => 'application/json',
+        ],
+        'timeout' => 15,
+    ];
+
+    $response = wp_remote_get('https://cdr.ffiec.gov/public/PWS/Institution/Find/0', $args);
+
+    if (is_wp_error($response)) {
+        wp_send_json_error(['message' => $response->get_error_message()]);
+    }
+
+    $status = wp_remote_retrieve_response_code($response);
+    $body   = wp_remote_retrieve_body($response);
+
+    if ($status >= 200 && $status < 300) {
+        wp_send_json_success(['status' => $status, 'body' => $body]);
+    }
+
+    wp_send_json_error(['status' => $status, 'body' => $body]);
+}
+add_action('wp_ajax_bce_test_ffiec', 'bce_test_ffiec');
