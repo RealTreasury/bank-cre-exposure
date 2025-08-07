@@ -24,6 +24,12 @@ exports.handler = async (event) => {
   const password = process.env.FFIEC_PASSWORD;
   const token = process.env.FFIEC_TOKEN;
 
+  console.log('Environment check:', {
+    hasUsername: !!username,
+    hasPassword: !!password,
+    hasToken: !!token
+  });
+
   if (!username || !password || !token) {
       return {
         statusCode: 500,
@@ -34,7 +40,12 @@ exports.handler = async (event) => {
         },
         body: JSON.stringify({
           error: 'FFIEC credentials not configured',
-          details: 'Please set FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN environment variables'
+          details: 'Please set FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN environment variables',
+          env_check: {
+            FFIEC_USERNAME: !!username,
+            FFIEC_PASSWORD: !!password,
+            FFIEC_TOKEN: !!token
+          }
         })
       };
   }
@@ -53,6 +64,12 @@ exports.handler = async (event) => {
   });
 
   const path = `/public/PWS/UBPR/Search?${params.toString()}`;
+  
+  console.log('Making request to FFIEC:', {
+    hostname: 'cdr.ffiec.gov',
+    path: path,
+    authHeaderLength: authHeader.length
+  });
 
   // Make the request to FFIEC API
   return new Promise((resolve) => {
@@ -64,7 +81,7 @@ exports.handler = async (event) => {
       headers: {
         'Authorization': authHeader,
         'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
+        'User-Agent': 'Mozilla/5.0 (compatible; Bank-CRE-Tool/1.0)'
       }
     };
 
@@ -76,46 +93,73 @@ exports.handler = async (event) => {
       });
 
       res.on('end', () => {
+        console.log('FFIEC response status:', res.statusCode);
+        console.log('FFIEC response headers:', res.headers);
+        console.log('FFIEC response length:', data.length);
+        
         // Handle different response types
         let responseBody;
         try {
           responseBody = JSON.parse(data);
+          console.log('Successfully parsed JSON response');
         } catch (e) {
-          // If not JSON, return error
+          console.error('Failed to parse JSON:', e.message);
+          // If not JSON, return error with more details
           responseBody = { 
             error: 'Invalid JSON response from FFIEC API', 
             statusCode: res.statusCode,
-            rawData: data.substring(0, 500) // First 500 chars for debugging
+            headers: res.headers,
+            parseError: e.message,
+            rawData: data.substring(0, 1000) // First 1000 chars for debugging
           };
         }
 
-          resolve({
-            statusCode: res.statusCode,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Headers': 'Content-Type',
-              'Access-Control-Allow-Methods': 'GET,OPTIONS',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(responseBody)
-          });
-        });
-      });
-
-    req.on('error', (error) => {
         resolve({
-          statusCode: 500,
+          statusCode: res.statusCode,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            'Access-Control-Allow-Methods': 'GET,OPTIONS',
+            'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            error: 'Failed to connect to FFIEC API',
-            details: error.message
-          })
+          body: JSON.stringify(responseBody)
         });
       });
+    });
+
+    req.on('error', (error) => {
+      console.error('FFIEC request error:', error);
+      resolve({
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          error: 'Failed to connect to FFIEC API',
+          details: error.message,
+          code: error.code
+        })
+      });
+    });
+
+    req.setTimeout(30000, () => {
+      console.error('FFIEC request timeout');
+      req.destroy();
+      resolve({
+        statusCode: 504,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          error: 'Request timeout',
+          details: 'FFIEC API request timed out after 30 seconds'
+        })
+      });
+    });
 
     req.end();
   });
