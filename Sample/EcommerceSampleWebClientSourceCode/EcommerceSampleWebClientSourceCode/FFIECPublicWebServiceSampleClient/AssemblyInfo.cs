@@ -1,0 +1,23 @@
+﻿// Assembly Microsoft.Web.Services3, Version 3.0.0.0
+
+[assembly: System.CLSCompliant(true)]
+[assembly: System.Diagnostics.Debuggable(System.Diagnostics.DebuggableAttribute.DebuggingModes.IgnoreSymbolStoreSequencePoints | System.Diagnostics.DebuggableAttribute.DebuggingModes.Default)]
+[assembly: System.Reflection.AssemblyTitle("Microsoft.Web.Services3.dll")]
+[assembly: System.Runtime.InteropServices.ComVisible(false)]
+[assembly: System.Runtime.CompilerServices.CompilationRelaxations(8)]
+[assembly: System.Runtime.CompilerServices.RuntimeCompatibility(WrapNonExceptionThrows=true)]
+[assembly: System.Reflection.AssemblyInformationalVersion("3.0.5305.0")]
+[assembly: System.Reflection.AssemblyDescription("Microsoft.Web.Services3.dll")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("WSETest, PublicKey=002400000480000094000000060200000024000052534131000400000100010031863395fbc8224daa80b2abd16fd733ed9800d15aa7ec7bedfc2e0e764e4a890c71f67935ab8594b71ae0f790eb802347d8a95f6df7dfff378c4b6a411135525797b0e9ece4968aa38394e807041995377c14a245c68f88bdc38d133ebc2959061d8adf999f2c9067bb51a3952165a71e616e6ab8ff07261c11a1ac6818edbd")]
+[assembly: System.Reflection.AssemblyKeyFile(@"D:\xws\gxatk\main\tools\common\security\MSSharedLibSN1024.key")]
+[assembly: System.Reflection.AssemblyDelaySign(true)]
+[assembly: System.Resources.NeutralResourcesLanguage("en-US")]
+[assembly: System.Resources.SatelliteContractVersion("3.0.0.0")]
+[assembly: System.Reflection.AssemblyTrademark("Microsoft and Windows are either registered trademarks or trademarks of Microsoft Corporation in the U.S. and/or other countries.")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (C) Microsoft Corporation 2002, 2003, 2004. All rights reserved.")]
+[assembly: System.Reflection.AssemblyProduct("Web Services Enhancements 3.0 for Microsoft .NET")]
+[assembly: System.Reflection.AssemblyCompany("Microsoft Corporation")]
+[assembly: System.Reflection.AssemblyConfiguration("")]
+[assembly: System.Reflection.AssemblyDefaultAlias("Microsoft.Web.Services3.dll")]
+[assembly: System.Security.Permissions.SecurityPermission(System.Security.Permissions.SecurityAction.RequestMinimum, SkipVerification=true)]
+
