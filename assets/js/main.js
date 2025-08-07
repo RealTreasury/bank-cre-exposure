@@ -1,409 +1,601 @@
-        // API Configuration
-        const API_CONFIG = {
-            // FDIC API for bank financial data
-            FDIC_BASE_URL: 'https://banks.data.fdic.gov/api',
+// API Configuration
+const API_CONFIG = {
+    // Default Netlify URL - can be overridden by WordPress
+    NETLIFY_BASE_URL: window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app'
+};
 
-            // UBPR API for call report metrics
-            // Updated to point to Netlify Function proxy
-            UBPR_BASE_URL: '/api' // CORRECTED: Point to the proxy root
+// Global variables
+let bankData = [];
+let isLoading = false;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Bank CRE Exposure tool initializing...');
+    console.log('Netlify URL configured as:', API_CONFIG.NETLIFY_BASE_URL);
+    loadBankData();
+});
+
+// Main function to load bank data
+async function loadBankData() {
+    if (isLoading) return;
+    
+    isLoading = true;
+    showLoading(true);
+    updateAPIStatus('loading', 'Connecting to data sources...');
+
+    try {
+        console.log('Starting data fetch...');
+        const result = await fetchBankData();
+        
+        if (result.success) {
+            bankData = result.data;
+            displayBankData(bankData);
+            updateStatistics(bankData);
+            
+            const statusMessage = result.isMock 
+                ? `Using ${result.source} data (${bankData.length} records)` 
+                : `Live data loaded (${bankData.length} records)`;
+            
+            updateAPIStatus('connected', statusMessage);
+        } else {
+            throw new Error(result.error || 'Failed to load data');
+        }
+
+        updateLastUpdated();
+
+    } catch (error) {
+        console.error('Error loading bank data:', error);
+        handleDataLoadError(error);
+    } finally {
+        isLoading = false;
+        showLoading(false);
+        document.getElementById('refreshBtn')?.classList.remove('loading');
+    }
+}
+
+// Enhanced data fetching with better error handling
+async function fetchBankData() {
+    const maxRetries = 2;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`Data fetch attempt ${attempt}/${maxRetries}`);
+            
+            const url = `${API_CONFIG.NETLIFY_BASE_URL}/.netlify/functions/ffiec?top=100`;
+            console.log('Fetching from:', url);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                // Add timeout
+                signal: AbortSignal.timeout(30000) // 30 second timeout
+            });
+
+            console.log('Response status:', response.status, response.statusText);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+            }
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.warn('Non-JSON response:', text.substring(0, 500));
+                throw new Error(`Expected JSON but got ${contentType || 'unknown'}`);
+            }
+
+            const data = await response.json();
+            console.log('Received data:', {
+                type: typeof data,
+                isArray: Array.isArray(data),
+                length: Array.isArray(data) ? data.length : 'N/A',
+                keys: typeof data === 'object' ? Object.keys(data) : 'N/A'
+            });
+
+            return processAPIResponse(data);
+
+        } catch (error) {
+            console.warn(`Attempt ${attempt} failed:`, error.message);
+            lastError = error;
+            
+            if (attempt < maxRetries) {
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+        }
+    }
+
+    // All attempts failed, return error
+    return {
+        success: false,
+        error: lastError?.message || 'Failed to fetch data after multiple attempts',
+        data: [],
+        isMock: false
+    };
+}
+
+// Process API response and normalize data
+function processAPIResponse(rawData) {
+    try {
+        // Handle different response structures
+        let records = [];
+        let isMock = false;
+        let source = 'unknown';
+
+        if (Array.isArray(rawData)) {
+            records = rawData;
+            source = 'array';
+        } else if (rawData && typeof rawData === 'object') {
+            if (rawData._meta) {
+                isMock = rawData._meta.source?.includes('mock') || false;
+                source = rawData._meta.source || 'api';
+            }
+            
+            if (Array.isArray(rawData.data)) {
+                records = rawData.data;
+            } else if (Array.isArray(rawData.results)) {
+                records = rawData.results;
+            } else if (rawData.error) {
+                throw new Error(rawData.error);
+            } else {
+                // Try to find array data in the object
+                const arrayKey = Object.keys(rawData).find(key => Array.isArray(rawData[key]));
+                if (arrayKey) {
+                    records = rawData[arrayKey];
+                }
+            }
+        }
+
+        if (!records || records.length === 0) {
+            console.warn('No records found in response, using fallback data');
+            records = generateClientSideMockData();
+            isMock = true;
+            source = 'client_fallback';
+        }
+
+        // Normalize and process bank data
+        const banks = records.map((item, index) => {
+            const bank = {
+                name: item.bank_name || item.BANK_NAME || item.name || `Bank ${index + 1}`,
+                assets: Number(item.total_assets ?? item.TOTAL_ASSETS ?? item.assets ?? 0),
+                netLoansToAssets: Number(item.net_loans_assets ?? item.NET_LOANS_ASSETS ?? item.netLoansToAssets ?? 0),
+                nonCurrToAssets: Number(item.noncurrent_assets_pct ?? item.NONCURRENT_ASSETS_PCT ?? item.nonCurrToAssets ?? 0),
+                cdLoansRatio: Number(item.cd_to_tier1 ?? item.CD_TO_TIER1 ?? item.cdLoansRatio ?? 0),
+                creLoansRatio: Number(item.cre_to_tier1 ?? item.CRE_TO_TIER1 ?? item.creLoansRatio ?? 0)
+            };
+
+            // Validate data
+            if (bank.assets <= 0 && bank.creLoansRatio <= 0) {
+                console.warn('Invalid bank data detected:', bank.name);
+            }
+
+            return bank;
+        }).filter(bank => bank.assets > 0 || bank.creLoansRatio > 0); // Filter out completely invalid records
+
+        // Add rankings and risk classifications
+        addBankRankingsAndRisk(banks);
+
+        return {
+            success: true,
+            data: banks,
+            isMock: isMock,
+            source: source,
+            recordCount: banks.length
         };
 
-        // Global variables
-        let bankData = [];
-        let isLoading = false;
+    } catch (error) {
+        console.error('Error processing API response:', error);
+        return {
+            success: false,
+            error: `Data processing error: ${error.message}`,
+            data: [],
+            isMock: false
+        };
+    }
+}
 
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadBankData();
-        });
+// Add rankings and risk classification to bank data
+function addBankRankingsAndRisk(banks) {
+    // Sort by assets for asset ranking
+    const sortedByAssets = [...banks].sort((a, b) => b.assets - a.assets);
+    sortedByAssets.forEach((bank, index) => {
+        bank.assetsRank = index + 1;
+    });
 
-        // Main function to load bank data
-        async function loadBankData() {
-            if (isLoading) return;
-            
-            isLoading = true;
-            showLoading(true);
-            updateAPIStatus('loading', 'Fetching bank data...');
+    // Sort by CRE ratio for CRE ranking  
+    const sortedByCRE = [...banks].sort((a, b) => b.creLoansRatio - a.creLoansRatio);
+    sortedByCRE.forEach((bank, index) => {
+        bank.creRank = index + 1;
+    });
 
-            try {
-                const result = await fetchRealBankData();
-                bankData = result.banks;
+    // Risk classification
+    banks.forEach(bank => {
+        if (bank.creLoansRatio > 400) {
+            bank.riskLevel = 'high';
+        } else if (bank.creLoansRatio >= 300) {
+            bank.riskLevel = 'medium';
+        } else {
+            bank.riskLevel = 'low';
+        }
+    });
+}
 
-                // Process and display data
-                displayBankData(bankData);
-                updateStatistics(bankData);
+// Client-side fallback data
+function generateClientSideMockData() {
+    return [
+        {
+            bank_name: "JPMorgan Chase Bank, National Association",
+            total_assets: 3200000000,
+            net_loans_assets: 65.5,
+            noncurrent_assets_pct: 0.8,
+            cd_to_tier1: 45.2,
+            cre_to_tier1: 180.3
+        },
+        {
+            bank_name: "Bank of America, National Association",
+            total_assets: 2500000000,
+            net_loans_assets: 68.2,
+            noncurrent_assets_pct: 1.1,
+            cd_to_tier1: 52.1,
+            cre_to_tier1: 205.7
+        },
+        {
+            bank_name: "Wells Fargo Bank, National Association",
+            total_assets: 1900000000,
+            net_loans_assets: 70.1,
+            noncurrent_assets_pct: 1.3,
+            cd_to_tier1: 65.8,
+            cre_to_tier1: 275.4
+        },
+        {
+            bank_name: "Citibank, National Association",
+            total_assets: 1700000000,
+            net_loans_assets: 62.3,
+            noncurrent_assets_pct: 0.9,
+            cd_to_tier1: 38.7,
+            cre_to_tier1: 165.2
+        },
+        {
+            bank_name: "U.S. Bank National Association",
+            total_assets: 550000000,
+            net_loans_assets: 72.8,
+            noncurrent_assets_pct: 1.8,
+            cd_to_tier1: 89.3,
+            cre_to_tier1: 345.6
+        },
+        {
+            bank_name: "Truist Bank",
+            total_assets: 460000000,
+            net_loans_assets: 74.2,
+            noncurrent_assets_pct: 2.1,
+            cd_to_tier1: 95.7,
+            cre_to_tier1: 398.4
+        }
+    ];
+}
 
-                if (result.isMock) {
-                    updateAPIStatus('error', `Using mock data - No live data available`);
-                } else {
-                    updateAPIStatus('connected', `Connected to real data sources (${bankData.length} records)`);
-                }
-                updateLastUpdated();
+// Handle data loading errors
+function handleDataLoadError(error) {
+    console.error('Data load error:', error);
+    
+    let errorMessage = 'Failed to load bank data. ';
+    let suggestions = [];
 
-            } catch (error) {
-                console.error('Error loading bank data:', error);
-                showError('Failed to load bank data. Please try again later.');
-                updateAPIStatus('error', 'Connection failed');
-            } finally {
-                isLoading = false;
-                showLoading(false);
-                document.getElementById('refreshBtn').classList.remove('loading');
-            }
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorMessage += 'Network connection issue.';
+        suggestions.push('Check your internet connection');
+        suggestions.push('Verify Netlify function URL is accessible');
+    } else if (error.message.includes('HTTP 4')) {
+        errorMessage += 'Server configuration issue.';
+        suggestions.push('Check Netlify function deployment');
+        suggestions.push('Verify environment variables are set');
+    } else if (error.message.includes('timeout')) {
+        errorMessage += 'Request timed out.';
+        suggestions.push('Try refreshing the page');
+        suggestions.push('Check if FFIEC API is responding slowly');
+    } else {
+        errorMessage += error.message;
+    }
+
+    updateAPIStatus('error', errorMessage);
+    showError(errorMessage + '\n\nSuggestions:\n• ' + suggestions.join('\n• '));
+    
+    // Load fallback data so the interface isn't completely broken
+    console.log('Loading fallback data due to error');
+    bankData = addBankRankingsAndRisk(generateClientSideMockData().map(item => ({
+        name: item.bank_name,
+        assets: item.total_assets,
+        netLoansToAssets: item.net_loans_assets,
+        nonCurrToAssets: item.noncurrent_assets_pct,
+        cdLoansRatio: item.cd_to_tier1,
+        creLoansRatio: item.cre_to_tier1
+    })));
+    
+    displayBankData(bankData);
+    updateStatistics(bankData);
+}
+
+// Display bank data in table
+function displayBankData(data) {
+    const tbody = document.getElementById('tableBody');
+    if (!tbody) {
+        console.error('Table body element not found');
+        return;
+    }
+
+    tbody.innerHTML = '';
+
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No data available</td></tr>';
+        return;
+    }
+
+    // Sort by CRE ratio descending for display
+    const sortedData = [...data].sort((a, b) => b.creLoansRatio - a.creLoansRatio);
+
+    sortedData.forEach(bank => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="rank-cell">${bank.assetsRank || 'N/A'}</td>
+            <td class="rank-cell">${bank.creRank || 'N/A'}</td>
+            <td class="bank-name" title="${bank.name}">${bank.name}</td>
+            <td class="number-format">${formatNumber(bank.assets)}</td>
+            <td class="number-format">${bank.netLoansToAssets.toFixed(2)}</td>
+            <td class="number-format">${bank.nonCurrToAssets.toFixed(2)}</td>
+            <td class="number-format">${bank.cdLoansRatio.toFixed(2)}</td>
+            <td class="number-format">
+                <span class="${bank.riskLevel || 'low'}-risk">${bank.creLoansRatio.toFixed(2)}</span>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    console.log(`Displayed ${sortedData.length} banks in table`);
+}
+
+// Update statistics
+function updateStatistics(data) {
+    if (!data || data.length === 0) {
+        console.warn('No data for statistics update');
+        return;
+    }
+
+    try {
+        // Banks meeting criteria
+        const banksCount = data.filter(bank => 
+            bank.netLoansToAssets >= 70 || 
+            bank.nonCurrToAssets >= 2 ||
+            bank.cdLoansRatio >= 100 ||
+            bank.creLoansRatio >= 300
+        ).length;
+
+        // Highest CRE ratio
+        const highestCRE = Math.max(...data.map(bank => bank.creLoansRatio));
+
+        // Largest bank assets
+        const largestAssets = Math.max(...data.map(bank => bank.assets));
+
+        // High risk count
+        const highRiskCount = data.filter(bank => bank.creLoansRatio > 400).length;
+
+        // Update UI elements
+        updateStatElement('statBanksCount', banksCount);
+        updateStatElement('statHighestCRE', highestCRE.toFixed(2) + '%');
+        updateStatElement('statLargestAssets', formatLargeNumber(largestAssets));
+        updateStatElement('statHighRiskCount', highRiskCount);
+
+        // Optional 10-year element
+        const tenYearEl = document.getElementById('statTenYear');
+        if (tenYearEl) {
+            updateStatElement('statTenYear', 'N/A');
         }
 
-        // Function to fetch real bank data from APIs
-        // Replace the fetchRealBankData function with this improved version
-        async function fetchRealBankData() {
-            let isMock = false;
+        console.log('Statistics updated:', { banksCount, highestCRE, largestAssets, highRiskCount });
+    } catch (error) {
+        console.error('Error updating statistics:', error);
+    }
+}
 
-            try {
-                const netlifyUrl = window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app';
-                const url = `${netlifyUrl}/.netlify/functions/ffiec?top=100&orderBy=assets&orderDirection=desc`;
+// Helper function to update stat elements
+function updateStatElement(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.textContent = value;
+        element.classList.remove('loading');
+    }
+}
 
-                console.log('Fetching from:', url);
-                const response = await fetch(url);
+// Refresh data
+function refreshData() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.classList.add('loading');
+    }
+    console.log('Manual data refresh triggered');
+    loadBankData();
+}
 
-                if (!response.ok) {
-                    console.error('Response not OK:', response.status, response.statusText);
-                    throw new Error(`Request failed: ${response.status} ${response.statusText}`);
-                }
-
-                let json;
-                try {
-                    json = await response.json();
-                } catch (parseError) {
-                    console.error('Failed to parse JSON response:', parseError);
-                    const text = await response.text();
-                    console.error('Response text:', text.substring(0, 500));
-                    throw new Error('Invalid JSON response from server');
-                }
-
-                // Check if response contains an error
-                if (json.error) {
-                    console.warn('Server returned error, using mock data:', json.error);
-                    isMock = true;
-                    return { banks: generateMockData(), isMock };
-                }
-
-                // Handle different response structures
-                let records = [];
-                if (Array.isArray(json)) {
-                    records = json;
-                } else if (json.data && Array.isArray(json.data)) {
-                    records = json.data;
-                } else if (json.results && Array.isArray(json.results)) {
-                    records = json.results;
-                } else {
-                    console.warn('Unexpected response structure:', json);
-                    isMock = true;
-                    return { banks: generateMockData(), isMock };
-                }
-
-                if (records.length === 0) {
-                    console.warn('No bank records returned from API');
-                    isMock = true;
-                    return { banks: generateMockData(), isMock };
-                }
-
-                const banks = records.map(item => ({
-                    name: item.bank_name || item.BANK_NAME || item.name || 'Unknown Bank',
-                    assets: Number(item.total_assets ?? item.TOTAL_ASSETS ?? item.assets ?? 0),
-                    netLoansToAssets: Number(item.net_loans_assets ?? item.NET_LOANS_ASSETS ?? item.netLoansToAssets ?? 0),
-                    nonCurrToAssets: Number(item.noncurrent_assets_pct ?? item.NONCURRENT_ASSETS_PCT ?? item.nonCurrToAssets ?? 0),
-                    cdLoansRatio: Number(item.cd_to_tier1 ?? item.CD_TO_TIER1 ?? item.cdLoansRatio ?? 0),
-                    creLoansRatio: Number(item.cre_to_tier1 ?? item.CRE_TO_TIER1 ?? item.creLoansRatio ?? 0)
-                }));
-
-                // Rank by assets
-                banks.sort((a, b) => b.assets - a.assets);
-                banks.forEach((bank, index) => {
-                    bank.assetsRank = index + 1;
-                });
-
-                // Rank by CRE ratio
-                const sortedByCRE = [...banks].sort((a, b) => b.creLoansRatio - a.creLoansRatio);
-                sortedByCRE.forEach((bank, index) => {
-                    bank.creRank = index + 1;
-                });
-
-                // Risk classification
-                banks.forEach(bank => {
-                    if (bank.creLoansRatio > 400) {
-                        bank.riskLevel = 'high';
-                    } else if (bank.creLoansRatio >= 300) {
-                        bank.riskLevel = 'medium';
-                    } else {
-                        bank.riskLevel = 'low';
-                    }
-                });
-
-                return { banks, isMock };
-                
-            } catch (error) {
-                console.error('Error fetching bank data:', error);
-                isMock = true;
-                return { banks: generateMockData(), isMock };
-            }
-        }
-
-        // Add this mock data function as fallback
-        function generateMockData() {
-            return [
-                {
-                    name: "JPMorgan Chase Bank, National Association",
-                    assets: 3200000000,
-                    netLoansToAssets: 65.5,
-                    nonCurrToAssets: 0.8,
-                    cdLoansRatio: 45.2,
-                    creLoansRatio: 180.3,
-                    assetsRank: 1,
-                    creRank: 15,
-                    riskLevel: 'low'
-                },
-                {
-                    name: "Bank of America, National Association",
-                    assets: 2500000000,
-                    netLoansToAssets: 68.2,
-                    nonCurrToAssets: 1.1,
-                    cdLoansRatio: 52.1,
-                    creLoansRatio: 205.7,
-                    assetsRank: 2,
-                    creRank: 12,
-                    riskLevel: 'low'
-                }
-                // Add more mock banks as needed
-            ];
-        }
-
-        // Display bank data in table
-        function displayBankData(data) {
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = '';
-
-            // Sort by CRE ratio descending
-            data.sort((a, b) => b.creLoansRatio - a.creLoansRatio);
-
-            data.forEach(bank => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="rank-cell">${bank.assetsRank}</td>
-                    <td class="rank-cell">${bank.creRank}</td>
-                    <td class="bank-name">${bank.name}</td>
-                    <td class="number-format">${formatNumber(bank.assets)}</td>
-                    <td class="number-format">${bank.netLoansToAssets.toFixed(2)}</td>
-                    <td class="number-format">${bank.nonCurrToAssets.toFixed(2)}</td>
-                    <td class="number-format">${bank.cdLoansRatio.toFixed(2)}</td>
-                    <td class="number-format">
-                        <span class="${bank.riskLevel}-risk">${bank.creLoansRatio.toFixed(2)}</span>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        // Update statistics
-        function updateStatistics(data) {
-            // Banks meeting criteria (simplified for demo)
-            const banksCount = data.filter(bank => 
-                bank.netLoansToAssets >= 70 || 
-                bank.nonCurrToAssets >= 2 ||
-                bank.cdLoansRatio >= 100 ||
-                bank.creLoansRatio >= 300
-            ).length;
-
-            // Highest CRE ratio
-            const highestCRE = Math.max(...data.map(bank => bank.creLoansRatio));
-
-            // Largest bank assets
-            const largestAssets = Math.max(...data.map(bank => bank.assets));
-
-            // High risk count
-            const highRiskCount = data.filter(bank => bank.creLoansRatio > 400).length;
-
-            // Update UI
-            document.getElementById('statBanksCount').textContent = banksCount;
-            document.getElementById('statBanksCount').classList.remove('loading');
-            
-            document.getElementById('statHighestCRE').textContent = highestCRE.toFixed(2) + '%';
-            document.getElementById('statHighestCRE').classList.remove('loading');
-            
-            document.getElementById('statLargestAssets').textContent = formatLargeNumber(largestAssets);
-            document.getElementById('statLargestAssets').classList.remove('loading');
-
-            document.getElementById('statHighRiskCount').textContent = highRiskCount;
-            document.getElementById('statHighRiskCount').classList.remove('loading');
-
-            const tenYearEl = document.getElementById('statTenYear');
-            if (tenYearEl) {
-                tenYearEl.textContent = 'N/A';
-                tenYearEl.classList.remove('loading');
-            }
-        }
-
-        // Refresh data
-        function refreshData() {
-            const refreshBtn = document.getElementById('refreshBtn');
-            refreshBtn.classList.add('loading');
-            loadBankData();
-        }
-
-        // Search functionality
-        document.getElementById('searchBox').addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            const rows = document.querySelectorAll('#bankTable tbody tr');
-            
-            rows.forEach(row => {
+// Search functionality
+const searchBox = document.getElementById('searchBox');
+if (searchBox) {
+    searchBox.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#bankTable tbody tr');
+        
+        let visibleCount = 0;
+        rows.forEach(row => {
+            if (row.cells.length > 2) {
                 const bankName = row.cells[2].textContent.toLowerCase();
-                row.style.display = bankName.includes(searchTerm) ? '' : 'none';
-            });
-        });
-
-        // Filter functionality
-        function filterTable(filterType, e) {
-            const rows = document.querySelectorAll('#bankTable tbody tr');
-            const buttons = document.querySelectorAll('.filter-btn');
-            
-            // Update active button
-            buttons.forEach(btn => btn.classList.remove('active'));
-            e.target.classList.add('active');
-            
-            rows.forEach(row => {
-                const creRatioElement = row.cells[7].querySelector('span');
-                const creRatio = parseFloat(creRatioElement.textContent);
-                const assets = parseInt(row.cells[3].textContent.replace(/,/g, ''));
-                
-                switch(filterType) {
-                    case 'all':
-                        row.style.display = '';
-                        break;
-                    case 'high':
-                        row.style.display = creRatio > 400 ? '' : 'none';
-                        break;
-                    case 'medium':
-                        row.style.display = (creRatio >= 300 && creRatio <= 400) ? '' : 'none';
-                        break;
-                    case 'large':
-                        row.style.display = assets > 100000000 ? '' : 'none';
-                        break;
-                }
-            });
-        }
-
-        // Sort functionality
-        let sortOrder = {};
-        function sortTable(columnIndex) {
-            const table = document.getElementById('bankTable');
-            const tbody = table.querySelector('tbody');
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            const isNumeric = columnIndex > 2;
-            
-            // Toggle sort order
-            sortOrder[columnIndex] = sortOrder[columnIndex] === 'asc' ? 'desc' : 'asc';
-            const order = sortOrder[columnIndex];
-            
-            rows.sort((a, b) => {
-                let aVal = a.cells[columnIndex].textContent.trim();
-                let bVal = b.cells[columnIndex].textContent.trim();
-                
-                // Handle special case for CRE ratio column
-                if (columnIndex === 7) {
-                    const aSpan = a.cells[columnIndex].querySelector('span');
-                    const bSpan = b.cells[columnIndex].querySelector('span');
-                    aVal = aSpan ? aSpan.textContent : aVal;
-                    bVal = bSpan ? bSpan.textContent : bVal;
-                }
-                
-                if (isNumeric) {
-                    aVal = parseFloat(aVal.replace(/,/g, '')) || 0;
-                    bVal = parseFloat(bVal.replace(/,/g, '')) || 0;
-                    return order === 'asc' ? aVal - bVal : bVal - aVal;
-                } else {
-                    return order === 'asc' 
-                        ? aVal.localeCompare(bVal) 
-                        : bVal.localeCompare(aVal);
-                }
-            });
-            
-            rows.forEach(row => tbody.appendChild(row));
-        }
-
-        // Utility functions
-        function formatNumber(num) {
-            return num.toLocaleString();
-        }
-
-        function formatLargeNumber(num) {
-            if (num >= 1e12) return '$' + (num / 1e12).toFixed(2) + 'T';
-            if (num >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
-            if (num >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
-            return '$' + formatNumber(num);
-        }
-
-        function showLoading(show) {
-            const overlay = document.getElementById('loadingOverlay');
-            if (show) {
-                overlay.classList.add('show');
-            } else {
-                overlay.classList.remove('show');
+                const isVisible = bankName.includes(searchTerm);
+                row.style.display = isVisible ? '' : 'none';
+                if (isVisible) visibleCount++;
             }
-        }
+        });
+        
+        console.log(`Search "${searchTerm}": ${visibleCount} visible results`);
+    });
+}
 
-        function updateAPIStatus(status, message) {
-            const indicator = document.getElementById('apiStatus');
-            const text = document.getElementById('apiStatusText');
-            
-            indicator.classList.remove('connected', 'loading', 'error');
-            indicator.classList.add(status);
-            text.textContent = message;
+// Filter functionality
+function filterTable(filterType, e) {
+    const rows = document.querySelectorAll('#bankTable tbody tr');
+    const buttons = document.querySelectorAll('.filter-btn');
+    
+    // Update active button
+    buttons.forEach(btn => btn.classList.remove('active'));
+    if (e && e.target) {
+        e.target.classList.add('active');
+    }
+    
+    let visibleCount = 0;
+    rows.forEach(row => {
+        if (row.cells.length < 8) return;
+        
+        const creRatioElement = row.cells[7].querySelector('span');
+        const creRatio = creRatioElement ? parseFloat(creRatioElement.textContent) : 0;
+        const assets = parseInt(row.cells[3].textContent.replace(/,/g, '')) || 0;
+        
+        let isVisible = false;
+        switch(filterType) {
+            case 'all':
+                isVisible = true;
+                break;
+            case 'high':
+                isVisible = creRatio > 400;
+                break;
+            case 'medium':
+                isVisible = creRatio >= 300 && creRatio <= 400;
+                break;
+            case 'large':
+                isVisible = assets > 100000000;
+                break;
         }
+        
+        row.style.display = isVisible ? '' : 'none';
+        if (isVisible) visibleCount++;
+    });
+    
+    console.log(`Filter "${filterType}": ${visibleCount} visible results`);
+}
 
-        function updateLastUpdated() {
-            const now = new Date();
-            const formatted = now.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-            document.getElementById('lastUpdated').textContent = formatted;
+// Sort functionality
+let sortOrder = {};
+function sortTable(columnIndex) {
+    const table = document.getElementById('bankTable');
+    const tbody = table?.querySelector('tbody');
+    if (!tbody) return;
+    
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    if (rows.length === 0) return;
+    
+    const isNumeric = columnIndex > 2;
+    
+    // Toggle sort order
+    sortOrder[columnIndex] = sortOrder[columnIndex] === 'asc' ? 'desc' : 'asc';
+    const order = sortOrder[columnIndex];
+    
+    rows.sort((a, b) => {
+        if (a.cells.length <= columnIndex || b.cells.length <= columnIndex) return 0;
+        
+        let aVal = a.cells[columnIndex].textContent.trim();
+        let bVal = b.cells[columnIndex].textContent.trim();
+        
+        // Handle special case for CRE ratio column
+        if (columnIndex === 7) {
+            const aSpan = a.cells[columnIndex].querySelector('span');
+            const bSpan = b.cells[columnIndex].querySelector('span');
+            aVal = aSpan ? aSpan.textContent : aVal;
+            bVal = bSpan ? bSpan.textContent : bVal;
         }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 5000);
+        
+        if (isNumeric) {
+            aVal = parseFloat(aVal.replace(/[$,]/g, '')) || 0;
+            bVal = parseFloat(bVal.replace(/[$,]/g, '')) || 0;
+            return order === 'asc' ? aVal - bVal : bVal - aVal;
+        } else {
+            return order === 'asc' 
+                ? aVal.localeCompare(bVal) 
+                : bVal.localeCompare(aVal);
         }
+    });
+    
+    rows.forEach(row => tbody.appendChild(row));
+    console.log(`Table sorted by column ${columnIndex} (${order})`);
+}
 
-        // API Integration Guide
-        function setupRealAPIs() {
-            // This function demonstrates how to set up real API connections
-            
-            /* 1. FDIC API Setup
-            - Register at: https://banks.data.fdic.gov/docs/
-            - Get API key
-            - Endpoints:
-              - /institutions - Get bank list
-              - /financials - Get financial data
-            */
-            
-            /* 2. FFIEC CDR API Setup
-            - Access: https://cdr.ffiec.gov/public/
-            - No API key required for public data
-            - Use SOAP/REST endpoints for Call Report data
-            */
+// Utility functions
+function formatNumber(num) {
+    if (isNaN(num) || num === null || num === undefined) return '0';
+    return Number(num).toLocaleString();
+}
 
-            /* 3. Data Processing
-            - Fetch institution list
-            - Get Call Report data for each institution
-            - Calculate required ratios:
-              - CRE Loans / (Tier 1 Capital + Allowances)
-              - C&D Loans / (Tier 1 Capital + Allowances)
-              - Net Loans & Leases / Total Assets
-              - Non-Current Assets / Total Assets
-            */
+function formatLargeNumber(num) {
+    if (isNaN(num) || num === null || num === undefined) return '$0';
+    
+    if (num >= 1e12) return '$' + (num / 1e12).toFixed(2) + 'T';
+    if (num >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
+    if (num >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
+    return '$' + formatNumber(num);
+}
+
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        if (show) {
+            overlay.classList.add('show');
+        } else {
+            overlay.classList.remove('show');
         }
+    }
+}
+
+function updateAPIStatus(status, message) {
+    const indicator = document.getElementById('apiStatus');
+    const text = document.getElementById('apiStatusText');
+    
+    if (indicator) {
+        indicator.classList.remove('connected', 'loading', 'error');
+        indicator.classList.add(status);
+    }
+    
+    if (text) {
+        text.textContent = message;
+    }
+    
+    console.log('API Status:', status, '-', message);
+}
+
+function updateLastUpdated() {
+    const now = new Date();
+    const formatted = now.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    const element = document.getElementById('lastUpdated');
+    if (element) {
+        element.textContent = formatted;
+    }
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('errorMessage');
+    if (errorDiv) {
+        errorDiv.innerHTML = message.replace(/\n/g, '<br>');
+        errorDiv.style.display = 'block';
+        
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 10000); // Show for 10 seconds
+    }
+    
+    console.error('User Error:', message);
+}
