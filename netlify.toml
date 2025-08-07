@@ -20,6 +20,17 @@
   # relative to the base directory.
   functions = "netlify/functions"
 
+# This section adds the necessary CORS headers to your function responses.
+[[headers]]
+  # Apply these headers to all paths under /.netlify/functions/
+  for = "/.netlify/functions/*"
+  [headers.values]
+    # Allow requests from your WordPress staging site.
+    Access-Control-Allow-Origin = "https://staging-a1e3-aisbee08e5bdvaliantmaker.wpcomstaging.com"
+    # You can also use a wildcard (*) to allow requests from any site,
+    # but it's more secure to specify the domain.
+    # Access-Control-Allow-Origin = "*"
+
 # Optional: You can specify a Node.js version to prevent build issues.
 [build.environment]
   NODE_VERSION = "18"
