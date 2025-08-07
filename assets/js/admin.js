@@ -55,8 +55,8 @@ async function testNetlify() {
             throw new Error('Missing Netlify URL. Please configure it in the settings above.');
         }
 
-        // Test a simple endpoint first
-        const response = await fetch(netlifyUrl + '/.netlify/functions/fred?series_id=DGS10&limit=1', {
+        // Test FFIEC proxy endpoint
+        const response = await fetch(netlifyUrl + '/.netlify/functions/ffiec?test=true', {
             method: 'GET'
         });
         
