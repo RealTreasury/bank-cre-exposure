@@ -17,7 +17,14 @@ function bce_enqueue_assets() {
 add_action('wp_enqueue_scripts', 'bce_enqueue_assets');
 
 function bce_pass_js_vars() {
-    wp_add_inline_script('bce-script', 'window.bce_plugin_url = "' . plugin_dir_url(__FILE__) . '";', 'before');
+    $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
+
+    $js_vars = "
+        window.bce_plugin_url = '" . plugin_dir_url(__FILE__) . "';
+        window.bce_netlify_url = '" . esc_js($netlify_url) . "';
+    ";
+
+    wp_add_inline_script('bce-script', $js_vars, 'before');
 }
 add_action('wp_enqueue_scripts', 'bce_pass_js_vars');
 
