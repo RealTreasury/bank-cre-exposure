@@ -1,4 +1,7 @@
 const https = require('https');
+const axios = require('axios');
+const { parseStringPromise, processors } = require('xml2js');
+const stripPrefix = processors.stripPrefix;
 
 // CORS headers for all responses
 const corsHeaders = {
@@ -206,20 +209,112 @@ async function testFFIECConnection(username, password, token) {
   });
 }
 
-async function fetchFFIECData(username, password, token, queryParams) {
-  // Since FFIEC uses SOAP services, we'll need to make SOAP calls
-  // For now, return enhanced mock data that looks realistic
-  console.log('FFIEC SOAP integration would go here');
-  console.log('Query params:', queryParams);
-  
-  // This would require implementing SOAP client
-  // For now, return enhanced mock data
-  const mockData = generateEnhancedMockData(parseInt(queryParams.top) || 100);
-  
-  return {
-    data: mockData,
-    recordCount: mockData.length
+async function soapRequest(action, body, authHeader) {
+  const url = 'https://cdr.ffiec.gov/public/PWS/WebServices/RetrievalService.asmx';
+  const envelope = `<?xml version="1.0" encoding="utf-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ret="https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService">\n  <soap:Body>\n    <ret:${action}>\n      ${body}\n    </ret:${action}>\n  </soap:Body>\n</soap:Envelope>`;
+  const headers = {
+    'Content-Type': 'text/xml; charset=utf-8',
+    'SOAPAction': `https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService/${action}`,
+    'Authorization': authHeader
   };
+  const response = await axios.post(url, envelope, { headers, timeout: 30000 });
+  return parseStringPromise(response.data, {
+    explicitArray: false,
+    tagNameProcessors: [stripPrefix]
+  });
+}
+
+async function retrieveInstitutions(period, authHeader, limit) {
+  const body = `<ret:reportingPeriod>${period}</ret:reportingPeriod>`;
+  const parsed = await soapRequest('RetrieveUBPRInstitutions', body, authHeader);
+  let list = parsed?.Envelope?.Body?.RetrieveUBPRInstitutionsResponse?.RetrieveUBPRInstitutionsResult?.UBPRInstitution || [];
+  if (!Array.isArray(list)) list = [list];
+  const mapped = list
+    .map(inst => ({
+      idrssd: inst.ID_RSSD || inst.IDRSSD || inst.ID,
+      name: inst.NAME || inst.Name || inst.InstNm,
+      assets: Number(inst.ASSET || inst.TotalAssets || 0)
+    }))
+    .filter(i => i.idrssd && i.name)
+    .sort((a, b) => b.assets - a.assets);
+  return mapped.slice(0, limit);
+}
+
+async function retrieveUBPRData(period, ids, authHeader) {
+  const chunkSize = 50;
+  const results = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const idXml = chunk.map(id => `<ret:int>${id}</ret:int>`).join('');
+    const body = `<ret:reportingPeriod>${period}</ret:reportingPeriod><ret:idrssdList>${idXml}</ret:idrssdList>`;
+    const parsed = await soapRequest('RetrieveUBPRData', body, authHeader);
+    let data = parsed?.Envelope?.Body?.RetrieveUBPRDataResponse?.RetrieveUBPRDataResult?.UBPRData || [];
+    if (!Array.isArray(data)) data = [data];
+    results.push(...data);
+  }
+  return results;
+}
+
+function transformUBPRData(insts, ubprRaw) {
+  const codeMap = {
+    UBPR2170: 'total_assets',
+    UBPR2122: 'net_loans_assets',
+    UBPR2107: 'noncurrent_assets_pct',
+    UBPR6648: 'cd_to_tier1',
+    UBPR6649: 'cre_to_tier1'
+  };
+  const dataMap = new Map();
+  ubprRaw.forEach(item => {
+    const id = item.ID_RSSD || item.IDRSSD || item.ID;
+    let entries = item.UBPRItem || item.Item || [];
+    if (!Array.isArray(entries)) entries = [entries];
+    const obj = {};
+    entries.forEach(e => {
+      const code = e.UBPRCode || e.Code || e.Item || e.ID;
+      if (!codeMap[code]) return;
+      let val = null;
+      for (const key of ['DollarAmt','Amount','Ratio','Value','Data','_']) {
+        if (e[key] !== undefined) {
+          const num = Number(e[key]);
+          if (!isNaN(num)) { val = num; break; }
+        }
+      }
+      if (val !== null) obj[codeMap[code]] = val;
+    });
+    dataMap.set(String(id), obj);
+  });
+  return insts.map(inst => {
+    const data = dataMap.get(String(inst.idrssd)) || {};
+    return {
+      bank_name: inst.name,
+      total_assets: Number(inst.assets),
+      net_loans_assets: data.net_loans_assets ?? null,
+      noncurrent_assets_pct: data.noncurrent_assets_pct ?? null,
+      cd_to_tier1: data.cd_to_tier1 ?? null,
+      cre_to_tier1: data.cre_to_tier1 ?? null
+    };
+  });
+}
+
+function getLatestReportingPeriod() {
+  const now = new Date();
+  const quarter = Math.floor(now.getMonth() / 3) * 3 + 3;
+  const year = now.getFullYear();
+  const month = String(quarter).padStart(2, '0');
+  const day = new Date(year, quarter, 0).getDate();
+  return `${year}${month}${String(day).padStart(2, '0')}`;
+}
+
+async function fetchFFIECData(username, password, token, queryParams) {
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}${token}`).toString('base64')}`;
+  const top = Math.min(parseInt(queryParams.top) || 100, 500);
+  const period = queryParams.reportingPeriod || getLatestReportingPeriod();
+  const institutions = await retrieveInstitutions(period, authHeader, top * 2);
+  const selected = institutions.slice(0, top);
+  const ids = selected.map(i => i.idrssd);
+  const ubprRaw = await retrieveUBPRData(period, ids, authHeader);
+  const data = transformUBPRData(selected, ubprRaw).sort((a, b) => b.total_assets - a.total_assets);
+  return { data, recordCount: data.length };
 }
 
 function generateMockData() {
@@ -273,46 +368,4 @@ function generateMockData() {
       cre_to_tier1: 398.4
     }
   ];
-}
-
-function generateEnhancedMockData(count = 100) {
-  const bankNames = [
-    "JPMorgan Chase Bank, National Association",
-    "Bank of America, National Association",
-    "Wells Fargo Bank, National Association", 
-    "Citibank, National Association",
-    "U.S. Bank National Association",
-    "Truist Bank",
-    "PNC Bank, National Association",
-    "Goldman Sachs Bank USA",
-    "TD Bank, N.A.",
-    "Capital One, National Association",
-    "Fifth Third Bank",
-    "BMO Harris Bank N.A.",
-    "Regions Bank",
-    "KeyBank National Association",
-    "Citizens Bank, National Association"
-  ];
-
-  const data = [];
-  
-  for (let i = 0; i < Math.min(count, 100); i++) {
-    const bankName = i < bankNames.length 
-      ? bankNames[i] 
-      : `Regional Bank ${String.fromCharCode(65 + (i % 26))}${Math.floor(i / 26)}`;
-    
-    // Generate realistic but varied data
-    const baseAssets = 10000000 * (100 - i) * (0.5 + Math.random());
-    
-    data.push({
-      bank_name: bankName,
-      total_assets: Math.round(baseAssets),
-      net_loans_assets: Number((45 + Math.random() * 35).toFixed(2)), // 45-80%
-      noncurrent_assets_pct: Number((Math.random() * 3).toFixed(2)), // 0-3%
-      cd_to_tier1: Number((20 + Math.random() * 100).toFixed(2)), // 20-120%
-      cre_to_tier1: Number((100 + Math.random() * 400).toFixed(2)) // 100-500%
-    });
-  }
-  
-  return data;
 }

@@ -13,5 +13,9 @@
   "type": "commonjs",
   "devDependencies": {
     "ejs": "^3.1.10"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "xml2js": "^0.6.2"
   }
 }
