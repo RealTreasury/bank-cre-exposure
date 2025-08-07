@@ -46,12 +46,12 @@ function bce_register_admin_page() {
         wp_enqueue_script(
             'bce-admin-script',
             plugin_dir_url(__FILE__) . 'assets/js/admin.js',
-            ['jquery', 'wp-util'],
-            '1.0.1',
+            ['jquery'],
+            '1.0.2',
             true
         );
 
-        $netlify_url = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
+        $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
         wp_localize_script(
             'bce-admin-script',
             'bce_data',
@@ -73,79 +73,6 @@ function bce_register_settings() {
 add_action('admin_init', 'bce_register_settings');
 
 function bce_render_admin_page() {
-    $credentials = [
-        'FRED_API_KEY'   => getenv('FRED_API_KEY') ?: get_option('FRED_API_KEY'),
-        'FFIEC_USERNAME' => getenv('FFIEC_USERNAME') ?: get_option('FFIEC_USERNAME'),
-        'FFIEC_PASSWORD' => getenv('FFIEC_PASSWORD') ?: get_option('FFIEC_PASSWORD'),
-        'FFIEC_TOKEN'    => getenv('FFIEC_TOKEN') ?: get_option('FFIEC_TOKEN'),
-    ];
-
-    foreach ($credentials as $name => $value) {
-        if (empty($value)) {
-            error_log("Bank CRE Exposure: missing credential {$name}");
-        }
-    }
-
-    $netlify_url = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
-
+    $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
     include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
 }
-
-function bce_test_netlify() {
-    $base = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL');
-    if (empty($base)) {
-        wp_send_json_error(['message' => 'Missing Netlify URL.']);
-    }
-
-    $url = rtrim($base, '/') . '/.netlify/functions/ffiec';
-    $response = wp_remote_get($url, ['timeout' => 15]);
-
-    if (is_wp_error($response)) {
-        wp_send_json_error(['message' => $response->get_error_message()]);
-    }
-
-    $status = wp_remote_retrieve_response_code($response);
-    $body   = wp_remote_retrieve_body($response);
-
-    if ($status >= 200 && $status < 300) {
-        wp_send_json_success(['status' => $status, 'body' => $body]);
-    }
-
-    wp_send_json_error(['status' => $status, 'body' => $body]);
-}
-add_action('wp_ajax_bce_test_netlify', 'bce_test_netlify');
-
-function bce_test_ffiec() {
-    $username = getenv('FFIEC_USERNAME') ?: get_option('FFIEC_USERNAME');
-    $password = getenv('FFIEC_PASSWORD') ?: get_option('FFIEC_PASSWORD');
-    $token    = getenv('FFIEC_TOKEN') ?: get_option('FFIEC_TOKEN');
-
-    if (!$username || !$password || !$token) {
-        wp_send_json_error(['message' => 'Missing FFIEC credentials.']);
-    }
-
-    $auth = base64_encode($username . ':' . $password . $token);
-    $args = [
-        'headers' => [
-            'Authorization' => 'Basic ' . $auth,
-            'Accept'        => 'application/json',
-        ],
-        'timeout' => 15,
-    ];
-
-    $response = wp_remote_get('https://cdr.ffiec.gov/public/PWS/Institution/Find/0', $args);
-
-    if (is_wp_error($response)) {
-        wp_send_json_error(['message' => $response->get_error_message()]);
-    }
-
-    $status = wp_remote_retrieve_response_code($response);
-    $body   = wp_remote_retrieve_body($response);
-
-    if ($status >= 200 && $status < 300) {
-        wp_send_json_success(['status' => $status, 'body' => $body]);
-    }
-
-    wp_send_json_error(['status' => $status, 'body' => $body]);
-}
-add_action('wp_ajax_bce_test_ffiec', 'bce_test_ffiec');
