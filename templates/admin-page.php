@@ -27,7 +27,7 @@ if (!defined('ABSPATH')) {
     
     <div class="notice notice-info">
         <p><strong><?php esc_html_e('Note:', 'bank-cre-exposure'); ?></strong> 
-        <?php esc_html_e('Credentials (FFIEC_USERNAME, FFIEC_PASSWORD, FFIEC_TOKEN, FRED_API_KEY) should be configured as environment variables in your Netlify deployment, not in WordPress.', 'bank-cre-exposure'); ?>
+        <?php esc_html_e('Credentials (FFIEC_USERNAME, FFIEC_PASSWORD, FFIEC_TOKEN) should be configured as environment variables in your Netlify deployment, not in WordPress.', 'bank-cre-exposure'); ?>
         </p>
     </div>
 

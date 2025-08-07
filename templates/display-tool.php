@@ -2,7 +2,7 @@
         <div class="report-header">
             <h1>Commercial Real Estate Exposure Report</h1>
             <div class="subtitle">Top US Banks by Total Assets - Live Data</div>
-            <div class="subtitle">Data refreshed from FDIC & FFIEC APIs</div>
+            <div class="subtitle">Data refreshed from FFIEC APIs</div>
             <div class="api-status">
                 <span class="status-indicator loading" id="apiStatus"></span>
                 <span id="apiStatusText">Connecting to APIs...</span>
@@ -35,10 +35,6 @@
             <div class="stat-card">
                 <div class="stat-number loading" id="statHighRiskCount">--</div>
                 <div class="stat-label">Banks > 400% CRE</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number loading" id="statTenYear">--.--%</div>
-                <div class="stat-label">10-Year Treasury</div>
             </div>
         </div>
 
@@ -85,7 +81,7 @@
         </div>
 
         <div class="report-footer">
-            <strong>Source:</strong> FDIC API & FFIEC CDR Public Data | Live data connection<br>
+            <strong>Source:</strong> FFIEC CDR Public Data | Live data connection<br>
             <strong>Risk Categories:</strong> High Risk (>400%), Medium Risk (300-400%), Low Risk (<300%)<br>
             <strong>Last Updated:</strong> <span id="lastUpdated">--</span>
         </div>

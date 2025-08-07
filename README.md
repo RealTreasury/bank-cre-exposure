@@ -68,34 +68,12 @@ The response contains a `data` array with each bank's UBPR values. Fields used i
 
 The script in `index.html` fetches the data on page load and builds the table rows dynamically. CRE ratio values determine the risk coloring shown in the table.
 
-## Market Data
-
-The report can also display market indicators sourced from the Federal Reserve's FRED service. Requests are proxied through a Netlify Function so the API key can remain private. Deploy this repository to Netlify and set an environment variable named `FRED_API_KEY` with your key.
-
-The proxy lives at `dev/netlify/functions/fred.js` and forwards any query string it receives to the FRED API while appending the key. Once deployed, the client simply calls `/api/fred?series_id=DGS10` and no key is exposed in `index.html`.
-
-### Deploying the FRED proxy
-
-1. Create a new site on Netlify and connect this repository.
-2. In **Site settings → Environment variables**, add `FRED_API_KEY` with your FRED key.
-3. Deploy the site. Requests to `/api/fred` will be served by the function defined in `dev/netlify/functions/fred.js`.
-
-### FRED API script
-
-For local experimentation the `scripts/fred_api.py` helper fetches series observations directly from FRED:
-
-```bash
-export FRED_API_KEY=your_key
-python scripts/fred_api.py
-```
-
 ## Netlify environment variables
 
 The Netlify Functions in this repo need a few secrets for both local and deployed runs:
 
 | Variable | Purpose |
 | --- | --- |
-| `FRED_API_KEY` | API key for the Federal Reserve Economic Data service. |
 | `FFIEC_USERNAME` | Username for the FFIEC Public Web Service. |
 | `FFIEC_PASSWORD` | Password for the FFIEC Public Web Service. |
 | `FFIEC_TOKEN` | Security token appended to your FFIEC password. |
@@ -111,7 +89,6 @@ To configure the variables in your Netlify site, use the CLI from within `dev/`:
 
 ```bash
 cd dev
-netlify env:set FRED_API_KEY your_key
 netlify env:set FFIEC_USERNAME your_username
 netlify env:set FFIEC_PASSWORD your_password
 netlify env:set FFIEC_TOKEN your_token

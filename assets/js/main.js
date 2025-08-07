@@ -5,12 +5,7 @@
 
             // UBPR API for call report metrics
             // Updated to point to Netlify Function proxy
-            UBPR_BASE_URL: '/api', // CORRECTED: Point to the proxy root
-
-            // Federal Reserve Economic Data API
-            // FRED_API_KEY stored on the server side via Netlify Function
-            FRED_BASE_URL: 'https://api.stlouisfed.org/fred'
-            // Using live data; no mock values included
+            UBPR_BASE_URL: '/api' // CORRECTED: Point to the proxy root
         };
 
         // Global variables
@@ -20,7 +15,6 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadBankData();
-            fetchMarketData();
         });
 
         // Main function to load bank data
@@ -159,33 +153,6 @@
             ];
         }
 
-        // Fetch latest market indicator (e.g., 10-year Treasury yield)
-        async function fetchMarketData() {
-            try {
-                // Get the Netlify URL
-                const netlifyUrl = window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app';
-                const url = `${netlifyUrl}/.netlify/functions/fred?series_id=DGS10&limit=1`;
-                
-                const response = await fetch(url);
-                if (!response.ok) throw new Error('FRED request failed');
-                const json = await response.json();
-                const observations = json.observations || [];
-                if (observations.length > 0) {
-                    const latest = observations[0].value;
-                    const display = parseFloat(latest).toFixed(2) + '%';
-                    const el = document.getElementById('statTenYear');
-                    el.textContent = display;
-                    el.classList.remove('loading');
-                }
-            } catch (err) {
-                console.error('Error fetching market data:', err);
-                const el = document.getElementById('statTenYear');
-                el.textContent = 'N/A';
-                el.classList.remove('loading');
-            }
-        }
-
-
         // Display bank data in table
         function displayBankData(data) {
             const tbody = document.getElementById('tableBody');
@@ -240,9 +207,15 @@
             
             document.getElementById('statLargestAssets').textContent = formatLargeNumber(largestAssets);
             document.getElementById('statLargestAssets').classList.remove('loading');
-            
+
             document.getElementById('statHighRiskCount').textContent = highRiskCount;
             document.getElementById('statHighRiskCount').classList.remove('loading');
+
+            const tenYearEl = document.getElementById('statTenYear');
+            if (tenYearEl) {
+                tenYearEl.textContent = 'N/A';
+                tenYearEl.classList.remove('loading');
+            }
         }
 
         // Refresh data
@@ -401,14 +374,8 @@
             - No API key required for public data
             - Use SOAP/REST endpoints for Call Report data
             */
-            
-            /* 3. Federal Reserve FRED API
-            - Register at: https://fred.stlouisfed.org/docs/api/
-            - Get API key
-            - Access economic indicators
-            */
-            
-            /* 4. Data Processing
+
+            /* 3. Data Processing
             - Fetch institution list
             - Get Call Report data for each institution
             - Calculate required ratios:
