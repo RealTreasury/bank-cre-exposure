@@ -1,7 +1,27 @@
 [build]
   functions = "netlify/functions"
 
+[functions]
+  # Increase timeout for slow FFIEC API
+  timeout = 60
+  
+  # Node.js version
+  node_bundler = "esbuild"
+
+[functions.ffiec]
+  # Specific timeout for the FFIEC function
+  timeout = 60
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+# Add CORS headers for all API requests
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Max-Age = "86400"
