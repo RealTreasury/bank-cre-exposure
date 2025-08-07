@@ -2,14 +2,11 @@
   functions = "netlify/functions"
 
 [functions]
-  # Increase timeout for slow FFIEC API
-  timeout = 60
-
   # Use esbuild bundler for all functions
   node_bundler = "esbuild"
 
-[functions."ffiec"]
-  # Specific timeout for the FFIEC function
+[functions.ffiec]
+  # Increase timeout for the FFIEC function
   timeout = 60
 
 [[redirects]]
