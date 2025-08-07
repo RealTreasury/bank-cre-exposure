@@ -39,10 +39,11 @@
                 displayBankData(bankData);
                 updateStatistics(bankData);
 
-                const statusMessage = result.isMock
-                    ? `Connected: using fallback data (${bankData.length} records)`
-                    : `Connected to data sources (${bankData.length} records)`;
-                updateAPIStatus('connected', statusMessage);
+                if (result.isMock) {
+                    updateAPIStatus('error', `Using mock data - No live data available`);
+                } else {
+                    updateAPIStatus('connected', `Connected to real data sources (${bankData.length} records)`);
+                }
                 updateLastUpdated();
 
             } catch (error) {
