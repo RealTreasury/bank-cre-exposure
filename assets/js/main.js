@@ -52,31 +52,52 @@
         }
 
         // Function to fetch real bank data from APIs
+        // Replace the fetchRealBankData function with this improved version
         async function fetchRealBankData() {
             let isMock = false;
 
             try {
-                // Get the Netlify URL from WordPress (you'll need to pass this from PHP)
                 const netlifyUrl = window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app';
                 const url = `${netlifyUrl}/.netlify/functions/ffiec?top=100&orderBy=assets&orderDirection=desc`;
 
+                console.log('Fetching from:', url);
                 const response = await fetch(url);
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('FFIEC API Error:', errorText);
-                    throw new Error(`FFIEC request failed: ${response.status} ${response.statusText}`);
+                    console.error('Response not OK:', response.status, response.statusText);
+                    throw new Error(`Request failed: ${response.status} ${response.statusText}`);
                 }
 
-                const json = await response.json();
+                let json;
+                try {
+                    json = await response.json();
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    const text = await response.text();
+                    console.error('Response text:', text.substring(0, 500));
+                    throw new Error('Invalid JSON response from server');
+                }
 
                 // Check if response contains an error
                 if (json.error) {
-                    console.error('FFIEC API returned error:', json);
-                    throw new Error(`FFIEC API Error: ${json.error}`);
+                    console.warn('Server returned error, using mock data:', json.error);
+                    isMock = true;
+                    return { banks: generateMockData(), isMock };
                 }
 
-                const records = Array.isArray(json) ? json : (json.data || json.results || []);
+                // Handle different response structures
+                let records = [];
+                if (Array.isArray(json)) {
+                    records = json;
+                } else if (json.data && Array.isArray(json.data)) {
+                    records = json.data;
+                } else if (json.results && Array.isArray(json.results)) {
+                    records = json.results;
+                } else {
+                    console.warn('Unexpected response structure:', json);
+                    isMock = true;
+                    return { banks: generateMockData(), isMock };
+                }
 
                 if (records.length === 0) {
                     console.warn('No bank records returned from API');
@@ -117,6 +138,7 @@
                 });
 
                 return { banks, isMock };
+                
             } catch (error) {
                 console.error('Error fetching bank data:', error);
                 isMock = true;
