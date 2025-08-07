@@ -61,7 +61,10 @@
             let isMock = false;
 
             try {
-                const url = `${window.bce_plugin_url}assets/data/bank-data.json`;
+                // Get the Netlify URL from WordPress (you'll need to pass this from PHP)
+                const netlifyUrl = window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app';
+                const url = `${netlifyUrl}/.netlify/functions/ffiec?top=100&orderBy=assets&orderDirection=desc`;
+
                 const response = await fetch(url);
 
                 if (!response.ok) {
@@ -158,8 +161,10 @@
         // Fetch latest market indicator (e.g., 10-year Treasury yield)
         async function fetchMarketData() {
             try {
-                // CORRECTED: Call the FRED proxy function via the consistent /api/ path
-                const url = `/api/fred?series_id=DGS10`;
+                // Get the Netlify URL
+                const netlifyUrl = window.bce_netlify_url || 'https://stirring-pixie-0b3931.netlify.app';
+                const url = `${netlifyUrl}/.netlify/functions/fred?series_id=DGS10&limit=1`;
+                
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('FRED request failed');
                 const json = await response.json();
