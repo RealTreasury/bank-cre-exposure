@@ -12,3 +12,7 @@ Visualize and interact with U.S. regional bank CRE exposure. Use shortcode [bank
 == Description ==
 
 This plugin converts the original GitHub Pages project into a WordPress plugin, enqueuing its assets and providing a shortcode.
+
+== Configuration ==
+
+After activating the plugin, visit the **Bank CRE Exposure** settings page in your WordPress admin. The plugin automatically sets the Netlify URL option to `https://stirring-pixie-0b3931.netlify.app` so it points to the correct deployment. Adjust this value if you are using a different Netlify site.
