@@ -6,9 +6,11 @@
   base = "dev"
 
   # Build command: This command is run from within the base directory ('dev').
-  # It will install dependencies, create the 'public' directory, and then
-  # run the ejs-test.js script to generate the index.html file.
-  command = "npm install && mkdir -p public && node ./test/ejs-test.js"
+  # 1. Installs dependencies.
+  # 2. Creates the 'public' directory.
+  # 3. Creates a temporary data.json file with variables for the template.
+  # 4. Runs the EJS tool to correctly build the index.html file.
+  command = "npm install && mkdir -p public && echo '{\"title\": \"My Deployed Site\", \"name\": \"World\"}' > data.json && npx ejs ./test/template.ejs -f data.json -o ./public/index.html"
 
   # Publish directory: The directory that contains the built site files.
   # Since the base is 'dev', Netlify will look for 'dev/public'.
