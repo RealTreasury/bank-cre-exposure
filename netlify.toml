@@ -6,10 +6,6 @@
   base = "dev"
 
   # Build command: This command is run from within the base directory ('dev').
-  # 1. Installs dependencies.
-  # 2. Creates the 'public' directory.
-  # 3. Creates a temporary data.json file with variables for the template.
-  # 4. Runs the EJS tool to correctly build the index.html file.
   command = "npm install && mkdir -p public && echo '{\"title\": \"My Deployed Site\", \"name\": \"World\"}' > data.json && npx ejs ./test/template.ejs -f data.json -o ./public/index.html"
 
   # Publish directory: The directory that contains the built site files.
@@ -27,9 +23,12 @@
   [headers.values]
     # Allow requests from your WordPress staging site.
     Access-Control-Allow-Origin = "https://staging-a1e3-aisbee08e5bdvaliantmaker.wpcomstaging.com"
-    # You can also use a wildcard (*) to allow requests from any site,
-    # but it's more secure to specify the domain.
-    # Access-Control-Allow-Origin = "*"
+    
+    # ADDED: This header specifies which HTTP methods (e.g., GET) are allowed.
+    Access-Control-Allow-Methods = "GET, OPTIONS"
+    
+    # ADDED: This header specifies which request headers are allowed.
+    Access-Control-Allow-Headers = "Content-Type"
 
 # Optional: You can specify a Node.js version to prevent build issues.
 [build.environment]
