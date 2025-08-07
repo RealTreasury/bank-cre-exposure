@@ -1,118 +1,148 @@
 const https = require('https');
 
-exports.handler = async (event) => {
+// CORS headers for all responses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Max-Age': '86400'
+};
+
+exports.handler = async (event, context) => {
+  // Set longer timeout for this function
+  context.callbackWaitsForEmptyEventLoop = false;
+  
   console.log('FFIEC function request:', {
     method: event.httpMethod,
     path: event.path,
-    query: event.queryStringParameters
+    query: event.queryStringParameters,
+    headers: event.headers
   });
 
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Max-Age': '86400'
-      },
+      headers: corsHeaders,
       body: ''
     };
   }
 
-  const queryParams = event.queryStringParameters || {};
-  const isTest = queryParams.test === 'true';
+  try {
+    const queryParams = event.queryStringParameters || {};
+    const isTest = queryParams.test === 'true';
 
-  // Get credentials from environment variables
-  const username = process.env.FFIEC_USERNAME;
-  const password = process.env.FFIEC_PASSWORD;
-  const token = process.env.FFIEC_TOKEN;
+    // Get credentials from environment variables
+    const credentials = {
+      username: process.env.FFIEC_USERNAME,
+      password: process.env.FFIEC_PASSWORD,
+      token: process.env.FFIEC_TOKEN
+    };
 
-  const envStatus = {
-    FFIEC_USERNAME: !!username,
-    FFIEC_PASSWORD: !!password,
-    FFIEC_TOKEN: !!token,
-    hasAllCredentials: !!(username && password && token)
-  };
+    const envStatus = {
+      FFIEC_USERNAME: !!credentials.username,
+      FFIEC_PASSWORD: !!credentials.password,
+      FFIEC_TOKEN: !!credentials.token,
+      hasAllCredentials: !!(credentials.username && credentials.password && credentials.token)
+    };
 
-  console.log('Environment check:', envStatus);
+    console.log('Environment check:', envStatus);
 
-  // Handle test requests
-  if (isTest) {
-    if (!envStatus.hasAllCredentials) {
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          test: true,
-          status: 'CREDENTIALS_MISSING',
-          env: envStatus,
-          message: 'Configure FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN in Netlify environment variables',
-          instructions: 'Go to Netlify Dashboard > Site settings > Environment variables'
-        })
-      };
+    // Handle test requests
+    if (isTest) {
+      return handleTestRequest(credentials, envStatus);
     }
 
-    try {
-      const testResult = await testFFIECConnection(username, password, token);
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          test: true,
-          status: 'SUCCESS',
-          env: envStatus,
-          ffiecTest: testResult
-        })
-      };
-    } catch (error) {
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          test: true,
-          status: 'API_ERROR',
-          env: envStatus,
-          error: error.message
-        })
-      };
-    }
+    // Handle data requests
+    return await handleDataRequest(credentials, envStatus, queryParams);
+
+  } catch (error) {
+    console.error('Function error:', error);
+    return {
+      statusCode: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: 'Internal server error',
+        message: error.message,
+        timestamp: new Date().toISOString()
+      })
+    };
+  }
+};
+
+function handleTestRequest(credentials, envStatus) {
+  if (!envStatus.hasAllCredentials) {
+    return {
+      statusCode: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test: true,
+        status: 'CREDENTIALS_MISSING',
+        env: envStatus,
+        message: 'Configure FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN in Netlify environment variables',
+        instructions: 'Go to Netlify Dashboard > Site settings > Environment variables'
+      })
+    };
   }
 
+  return testFFIECConnection(credentials.username, credentials.password, credentials.token)
+    .then(testResult => ({
+      statusCode: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test: true,
+        status: 'SUCCESS',
+        env: envStatus,
+        ffiecTest: testResult,
+        timestamp: new Date().toISOString()
+      })
+    }))
+    .catch(error => ({
+      statusCode: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test: true,
+        status: 'API_ERROR',
+        env: envStatus,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      })
+    }));
+}
+
+async function handleDataRequest(credentials, envStatus, queryParams) {
   // For data requests, try real API first, fallback to mock
   if (!envStatus.hasAllCredentials) {
     console.log('Missing credentials, using mock data');
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(generateMockData())
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...generateMockData(),
+        _meta: {
+          source: 'mock',
+          reason: 'Missing FFIEC credentials',
+          timestamp: new Date().toISOString()
+        }
+      })
     };
   }
 
   try {
     console.log('Attempting to fetch real FFIEC data...');
-    const realData = await fetchFFIECData(username, password, token, queryParams);
+    const realData = await fetchFFIECData(credentials.username, credentials.password, credentials.token, queryParams);
     
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(realData)
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...realData,
+        _meta: {
+          source: 'ffiec_api',
+          timestamp: new Date().toISOString(),
+          queryParams: queryParams
+        }
+      })
     };
   } catch (error) {
     console.error('FFIEC API failed:', error.message);
@@ -120,21 +150,18 @@ exports.handler = async (event) => {
     
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...generateMockData(),
         _meta: {
-          source: 'mock',
+          source: 'mock_fallback',
           reason: 'FFIEC API failed: ' + error.message,
           timestamp: new Date().toISOString()
         }
       })
     };
   }
-};
+}
 
 async function testFFIECConnection(username, password, token) {
   const authString = `${username}:${password}${token}`;
@@ -170,9 +197,9 @@ async function testFFIECConnection(username, password, token) {
       reject(error);
     });
 
-    req.setTimeout(10000, () => {
+    req.setTimeout(30000, () => {
       req.destroy();
-      reject(new Error('Connection timeout'));
+      reject(new Error('Connection timeout after 30 seconds'));
     });
 
     req.end();
@@ -187,16 +214,11 @@ async function fetchFFIECData(username, password, token, queryParams) {
   
   // This would require implementing SOAP client
   // For now, return enhanced mock data
-  const mockData = generateEnhancedMockData(queryParams.top || 100);
+  const mockData = generateEnhancedMockData(parseInt(queryParams.top) || 100);
   
   return {
-    ...mockData,
-    _meta: {
-      source: 'enhanced_mock',
-      message: 'SOAP integration pending - using enhanced mock data',
-      timestamp: new Date().toISOString(),
-      credentialsValid: true
-    }
+    data: mockData,
+    recordCount: mockData.length
   };
 }
 
@@ -285,10 +307,10 @@ function generateEnhancedMockData(count = 100) {
     data.push({
       bank_name: bankName,
       total_assets: Math.round(baseAssets),
-      net_loans_assets: 45 + Math.random() * 35, // 45-80%
-      noncurrent_assets_pct: Math.random() * 3, // 0-3%
-      cd_to_tier1: 20 + Math.random() * 100, // 20-120%
-      cre_to_tier1: 100 + Math.random() * 400 // 100-500%
+      net_loans_assets: Number((45 + Math.random() * 35).toFixed(2)), // 45-80%
+      noncurrent_assets_pct: Number((Math.random() * 3).toFixed(2)), // 0-3%
+      cd_to_tier1: Number((20 + Math.random() * 100).toFixed(2)), // 20-120%
+      cre_to_tier1: Number((100 + Math.random() * 400).toFixed(2)) // 100-500%
     });
   }
   
