@@ -10,6 +10,13 @@
  * Text Domain: bank-cre-exposure
  */
 
+function bce_activate() {
+    if (false === get_option('BCE_NETLIFY_URL')) {
+        add_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
+    }
+}
+register_activation_hook(__FILE__, 'bce_activate');
+
 function bce_enqueue_assets() {
     wp_enqueue_style('bce-style', plugin_dir_url(__FILE__) . 'assets/css/style.css', [], '1.0.0');
     wp_enqueue_script('bce-script', plugin_dir_url(__FILE__) . 'assets/js/main.js', [], '1.0.0', true);
