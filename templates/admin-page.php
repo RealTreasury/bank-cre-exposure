@@ -6,6 +6,22 @@ if (!defined('ABSPATH')) {
 <div class="wrap">
     <h1><?php esc_html_e('Bank CRE Exposure Tool', 'bank-cre-exposure'); ?></h1>
     <p><?php esc_html_e('Use the shortcode', 'bank-cre-exposure'); ?> <code>[bank_cre_exposure]</code> <?php esc_html_e('to embed the report.', 'bank-cre-exposure'); ?></p>
+
+    <h2><?php esc_html_e('Settings', 'bank-cre-exposure'); ?></h2>
+    <form method="post" action="options.php">
+        <?php settings_fields('bce_settings'); ?>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th scope="row"><label for="BCE_NETLIFY_URL"><?php esc_html_e('Netlify URL', 'bank-cre-exposure'); ?></label></th>
+                <td>
+                    <input type="url" name="BCE_NETLIFY_URL" id="BCE_NETLIFY_URL" value="<?php echo esc_attr($netlify_url); ?>" class="regular-text" />
+                    <p class="description"><?php esc_html_e('Base URL of your Netlify deployment.', 'bank-cre-exposure'); ?></p>
+                </td>
+            </tr>
+        </table>
+        <?php submit_button(); ?>
+    </form>
+
     <h2><?php esc_html_e('Credential Status', 'bank-cre-exposure'); ?></h2>
     <ul>
         <?php foreach ($credentials as $name => $value) : ?>

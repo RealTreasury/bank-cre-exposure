@@ -1,23 +1,42 @@
 const https = require('https');
 
 exports.handler = async (event) => {
+  console.log('FFIEC function request:', {
+    method: event.httpMethod,
+    path: event.path,
+    query: event.queryStringParameters
+  });
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'GET,OPTIONS'
+      },
+      body: ''
+    };
+  }
+
   // Get credentials from environment variables
   const username = process.env.FFIEC_USERNAME;
-  const password = process.env.FFIEC_PASSWORD; 
+  const password = process.env.FFIEC_PASSWORD;
   const token = process.env.FFIEC_TOKEN;
 
   if (!username || !password || !token) {
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      },
-      body: JSON.stringify({ 
-        error: 'FFIEC credentials not configured',
-        details: 'Please set FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN environment variables'
-      })
-    };
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        body: JSON.stringify({
+          error: 'FFIEC credentials not configured',
+          details: 'Please set FFIEC_USERNAME, FFIEC_PASSWORD, and FFIEC_TOKEN environment variables'
+        })
+      };
   }
 
   // Create Basic Auth header
@@ -70,31 +89,33 @@ exports.handler = async (event) => {
           };
         }
 
+          resolve({
+            statusCode: res.statusCode,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Headers': 'Content-Type',
+              'Access-Control-Allow-Methods': 'GET,OPTIONS',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(responseBody)
+          });
+        });
+      });
+
+    req.on('error', (error) => {
         resolve({
-          statusCode: res.statusCode,
+          statusCode: 500,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Headers': 'Content-Type',
-            'Content-Type': 'application/json'
+            'Access-Control-Allow-Methods': 'GET,OPTIONS'
           },
-          body: JSON.stringify(responseBody)
+          body: JSON.stringify({
+            error: 'Failed to connect to FFIEC API',
+            details: error.message
+          })
         });
       });
-    });
-
-    req.on('error', (error) => {
-      resolve({
-        statusCode: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type'
-        },
-        body: JSON.stringify({ 
-          error: 'Failed to connect to FFIEC API',
-          details: error.message 
-        })
-      });
-    });
 
     req.end();
   });

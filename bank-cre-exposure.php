@@ -51,16 +51,26 @@ function bce_register_admin_page() {
             true
         );
 
+        $netlify_url = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
         wp_localize_script(
             'bce-admin-script',
             'bce_data',
             [
-                'netlify_url' => 'https://stirring-pixie-0b3931.netlify.app',
+                'netlify_url' => $netlify_url,
             ]
         );
     });
 }
 add_action('admin_menu', 'bce_register_admin_page');
+
+function bce_register_settings() {
+    register_setting('bce_settings', 'BCE_NETLIFY_URL', [
+        'type'              => 'string',
+        'sanitize_callback' => 'esc_url_raw',
+        'default'           => 'https://stirring-pixie-0b3931.netlify.app',
+    ]);
+}
+add_action('admin_init', 'bce_register_settings');
 
 function bce_render_admin_page() {
     $credentials = [
@@ -75,6 +85,8 @@ function bce_render_admin_page() {
             error_log("Bank CRE Exposure: missing credential {$name}");
         }
     }
+
+    $netlify_url = getenv('BCE_NETLIFY_URL') ?: get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
 
     include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
 }
