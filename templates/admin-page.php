@@ -22,32 +22,38 @@ if (!defined('ABSPATH')) {
         <?php submit_button(); ?>
     </form>
 
-    <h2><?php esc_html_e('Credential Status', 'bank-cre-exposure'); ?></h2>
-    <ul>
-        <?php foreach ($credentials as $name => $value) : ?>
-            <li>
-                <code><?php echo esc_html($name); ?></code>:
-                <?php if ($value) : ?>
-                    <span class="dashicons dashicons-yes-alt" style="color:green;"></span>
-                    <?php esc_html_e('Present', 'bank-cre-exposure'); ?>
-                <?php else : ?>
-                    <span class="dashicons dashicons-warning" style="color:#dc3232;"></span>
-                    <?php esc_html_e('Missing', 'bank-cre-exposure'); ?>
-                    <a href="https://github.com/RealTreasury/bank-cre-exposure#readme" target="_blank">
-                        <?php esc_html_e('Setup Instructions', 'bank-cre-exposure'); ?>
-                    </a>
-                <?php endif; ?>
-            </li>
-        <?php endforeach; ?>
-    </ul>
+    <h2><?php esc_html_e('Connection Status', 'bank-cre-exposure'); ?></h2>
+    <p><?php esc_html_e('API credentials are managed in your Netlify environment. Test the connections below:', 'bank-cre-exposure'); ?></p>
+    
+    <div class="notice notice-info">
+        <p><strong><?php esc_html_e('Note:', 'bank-cre-exposure'); ?></strong> 
+        <?php esc_html_e('Credentials (FFIEC_USERNAME, FFIEC_PASSWORD, FFIEC_TOKEN, FRED_API_KEY) should be configured as environment variables in your Netlify deployment, not in WordPress.', 'bank-cre-exposure'); ?>
+        </p>
+    </div>
 
     <h2><?php esc_html_e('Connectivity Tests', 'bank-cre-exposure'); ?></h2>
     <p>
-        <button id="bce-test-netlify" class="button button-primary"><?php esc_html_e('Test Netlify', 'bank-cre-exposure'); ?></button>
+        <button id="bce-test-netlify" class="button button-primary"><?php esc_html_e('Test Netlify Connection', 'bank-cre-exposure'); ?></button>
         <button id="bce-test-ffiec" class="button"><?php esc_html_e('Test FFIEC API', 'bank-cre-exposure'); ?></button>
         <button id="bce-update-data" class="button">Update Data</button>
     </p>
-    <div id="status"></div>
+    <div id="status" style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 4px; display: none;"></div>
     <pre id="bce-test-result" style="background:#fff;border:1px solid #ccc;padding:1em;max-height:300px;overflow:auto;"></pre>
 </div>
 
+<style>
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
