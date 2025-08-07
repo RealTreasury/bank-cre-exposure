@@ -90,11 +90,13 @@ async function fetchBankData() {
             }
 
             const data = await response.json();
-            console.log('Received data:', {
-                type: typeof data,
+            console.log('🔍 Raw API Response:', {
+                dataType: typeof data,
                 isArray: Array.isArray(data),
-                length: Array.isArray(data) ? data.length : 'N/A',
-                keys: typeof data === 'object' ? Object.keys(data) : 'N/A'
+                hasNumberedKeys: typeof data['0'] !== 'undefined',
+                hasMeta: !!data._meta,
+                keys: Object.keys(data).slice(0, 10), // First 10 keys
+                sampleRecord: data['0'] || data[0] || 'Not found'
             });
 
             return processAPIResponse(data);
