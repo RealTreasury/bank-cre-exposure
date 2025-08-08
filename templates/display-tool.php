@@ -3,6 +3,7 @@
             <h1>Commercial Real Estate Exposure Report</h1>
             <div class="subtitle">Top US Banks by Total Assets - Live Data</div>
             <div class="subtitle">Data refreshed from FFIEC APIs</div>
+            <div class="subtitle">Reporting Period: <span id="reportingPeriodDisplay">--</span></div>
             <div class="api-status">
                 <span class="status-indicator loading" id="apiStatus"></span>
                 <span id="apiStatusText">Connecting to APIs...</span>

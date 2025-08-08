@@ -8,26 +8,54 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchMarketData().catch(err => console.error('Error fetching market data:', err));
 });
 
+// Determine the latest released quarter end based on today's date
+function latestReleasedQuarterEnd(today = new Date()) {
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth() + 1;
+  let yy = y, mm = 3, dd = 31;
+  if (m >= 10)      { mm = 6; dd = 30; }
+  else if (m >= 7)  { mm = 3; dd = 31; }
+  else if (m >= 4)  { mm = 3; dd = 31; }
+  else              { yy = y - 1; mm = 12; dd = 31; }
+  const iso = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  return (iso === '2025-06-30') ? '2025-03-31' : iso;
+}
+
+// Retrieve safe reporting period from Netlify or compute fallback
+async function getReportingPeriod() {
+  const base = window.bce_data?.netlify_url || '';
+  try {
+    const r = await fetch(
+      `${base}/.netlify/functions/ffiec?list_periods=true`,
+      { signal: AbortSignal.timeout(15000) }
+    );
+    if (r.ok) {
+      const j = await r.json();
+      if (Array.isArray(j.periods) && j.periods.length) {
+        const p = j.periods[0];
+        return (p === '2025-06-30') ? '2025-03-31' : p;
+      }
+    }
+  } catch (_) {}
+  return latestReleasedQuarterEnd();
+}
+
 async function loadBanksViaNetlify() {
   try {
     const base = window.bce_data?.netlify_url; // e.g., https://your-site.netlify.app
     if (!base) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
 
-    const periodsRes = await fetch(
-      `${base}/.netlify/functions/ffiec?list_periods=true`,
-      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) }
-    );
-    const periods = await periodsRes.json();
-    const rp = (periods?.periods?.[0]) || '2024-09-30';
-
+    const rp = await getReportingPeriod();
     const url = `${base}/.netlify/functions/ffiec?reporting_period=${encodeURIComponent(rp)}&top=100`;
     const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(45000) });
     if (!res.ok) throw new Error(`FFIEC HTTP ${res.status}`);
 
-    const { data = [] } = await res.json();
+    const { data = [], _meta = {} } = await res.json();
     if (!Array.isArray(data) || data.length === 0) {
       console.warn('No bank records returned from API');
     }
+    const display = document.getElementById('reportingPeriodDisplay');
+    if (display) display.textContent = _meta.reportingPeriod || rp;
     renderBanks(data);
   } catch (e) {
     console.error('FFIEC load failed:', e);
