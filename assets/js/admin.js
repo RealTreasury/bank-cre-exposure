@@ -1,4 +1,4 @@
-// Admin scripts for Bank CRE Exposure plugin
+// Admin scripts for Bank CRE Exposure plugin - FIXED VERSION
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Bank CRE Admin interface loaded');
@@ -27,7 +27,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Add a comprehensive test button
     const comprehensiveBtn = document.getElementById('bce-comprehensive-test');
     if (comprehensiveBtn) {
         comprehensiveBtn.addEventListener('click', function(e) {
@@ -41,8 +40,6 @@ function showStatus(message, isLoading = false, type = 'info') {
     const statusDiv = document.getElementById('status');
     if (statusDiv) {
         statusDiv.style.display = 'block';
-        
-        // Add styling based on type
         statusDiv.className = `notice notice-${type}`;
         
         if (isLoading) {
@@ -88,15 +85,11 @@ async function testNetlify() {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            // Add timeout
             signal: AbortSignal.timeout(15000)
         });
         
         console.log('Response status:', response.status);
         console.log('Response headers:', Object.fromEntries(response.headers));
-        
-        const contentType = response.headers.get('content-type') || '';
-        console.log('Content-Type:', contentType);
         
         const text = await response.text();
         console.log('Raw response:', text);
@@ -106,11 +99,7 @@ async function testNetlify() {
             data = JSON.parse(text);
         } catch (e) {
             console.error('JSON parse error:', e);
-            data = { 
-                rawResponse: text,
-                parseError: e.message,
-                contentType: contentType
-            };
+            throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
         }
 
         if (!response.ok) {
@@ -125,10 +114,15 @@ async function testNetlify() {
         if (data.status === 'CREDENTIALS_MISSING') {
             statusMessage = '⚠️ Netlify works but FFIEC credentials missing';
             statusType = 'warning';
-            resultMessage += '\n\n⚠️ FFIEC credentials not configured in Netlify environment variables.';
-        } else if (data.status === 'API_ERROR') {
-            statusMessage = '⚠️ Netlify works but FFIEC API issue';
-            statusType = 'warning';
+            resultMessage += '\n\n⚠️ Missing environment variables in Netlify:\n';
+            if (data.missing) {
+                data.missing.forEach(variable => {
+                    resultMessage += `• ${variable}\n`;
+                });
+            }
+        } else if (data.status === 'CREDENTIALS_AVAILABLE') {
+            statusMessage = '✅ Netlify connection and credentials configured';
+            statusType = 'success';
         }
 
         showStatus(statusMessage, false, statusType);
@@ -166,7 +160,7 @@ async function testFFIEC() {
 
         const netlifyUrl = getNetlifyUrl();
         
-        // First check if we can get test results
+        // First check credentials
         const testUrl = netlifyUrl + '/.netlify/functions/ffiec?test=true';
         const testResponse = await fetch(testUrl, {
             method: 'GET',
@@ -174,76 +168,114 @@ async function testFFIEC() {
         });
         
         if (!testResponse.ok) {
-            throw new Error(`Test request failed: ${testResponse.status}`);
+            throw new Error(`Credentials test failed: HTTP ${testResponse.status}`);
         }
         
         const testData = await testResponse.json();
-        console.log('FFIEC test data:', testData);
+        console.log('FFIEC credentials test:', testData);
         
         if (testData.status === 'CREDENTIALS_MISSING') {
             showStatus('❌ FFIEC credentials not configured', false, 'error');
-            showResult('FFIEC API test failed:\n' + JSON.stringify(testData, null, 2) + 
-                '\n\nTo fix this:\n1. Go to Netlify Dashboard\n2. Site settings > Environment variables\n3. Add: FFIEC_USERNAME, FFIEC_PASSWORD, FFIEC_TOKEN');
+            let errorMsg = 'FFIEC API test failed - Missing credentials:\n' + JSON.stringify(testData, null, 2);
+            errorMsg += '\n\nTo fix this:\n1. Go to Netlify Dashboard\n2. Site settings > Environment variables\n3. Add these variables:';
+            if (testData.missing) {
+                testData.missing.forEach(variable => {
+                    errorMsg += `\n   • ${variable}`;
+                });
+            }
+            showResult(errorMsg);
             return;
         }
         
-        if (testData.status === 'API_ERROR') {
-            showStatus('❌ FFIEC API connection failed', false, 'error');
-            showResult('FFIEC API test failed:\n' + JSON.stringify(testData, null, 2));
-            return;
-        }
+        // Now try to get actual data (small sample to test API)
+        showStatus('Testing FFIEC API with real data request...', true);
         
-        // Now try to get actual data
-        const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=5';
+        const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=3';
         const dataResponse = await fetch(dataUrl, {
             method: 'GET',
-            signal: AbortSignal.timeout(30000)
+            signal: AbortSignal.timeout(45000) // FFIEC can be slow
         });
         
         const text = await dataResponse.text();
+        console.log('FFIEC data response:', text);
+        
         let data;
         try {
             data = JSON.parse(text);
         } catch (e) {
-            data = { rawResponse: text };
+            throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
         }
 
-        if (!dataResponse.ok) {
-            throw new Error(`HTTP ${dataResponse.status}: ${JSON.stringify(data)}`);
+        // Check for API errors (no more mock data)
+        if (!dataResponse.ok || data.error) {
+            const errorDetails = data.error ? 
+                `API Error: ${data.message}\n${data.details || ''}` : 
+                `HTTP ${dataResponse.status}: ${text}`;
+            
+            showStatus('❌ FFIEC API test failed', false, 'error');
+            showResult('FFIEC API Error:\n' + errorDetails);
+            return;
         }
 
-        // Check if we got real data or mock data
+        // Validate we got real data
         let statusMessage = '✅ FFIEC API test successful';
         let statusType = 'success';
+        let recordCount = 0;
         
-        if (data._meta && data._meta.source && data._meta.source.includes('mock')) {
-            statusMessage = '⚠️ FFIEC API returned mock data';
+        if (Array.isArray(data.data)) {
+            recordCount = data.data.length;
+            
+            // Check if this looks like real data
+            const firstRecord = data.data[0];
+            if (firstRecord && firstRecord.total_assets > 0) {
+                statusMessage += ` - Got ${recordCount} real bank records`;
+            } else {
+                statusType = 'warning';
+                statusMessage = '⚠️ FFIEC API returned data but values may be incomplete';
+            }
+        } else {
             statusType = 'warning';
+            statusMessage = '⚠️ FFIEC API returned unexpected data format';
         }
         
-        showStatus(`${statusMessage} (${dataResponse.status})`, false, statusType);
-        showResult('FFIEC API test result:\n' + JSON.stringify(data, null, 2));
+        showStatus(statusMessage, false, statusType);
+        
+        // Show sample data for verification
+        const resultData = {
+            recordCount: recordCount,
+            dataSource: data._meta?.source || 'unknown',
+            reportingPeriod: data._meta?.reportingPeriod || 'unknown',
+            sampleRecord: recordCount > 0 ? data.data[0] : 'None',
+            metadata: data._meta || 'None'
+        };
+        
+        showResult('FFIEC API test result:\n' + JSON.stringify(resultData, null, 2));
         
     } catch (error) {
         console.error('FFIEC test error:', error);
         showStatus('❌ FFIEC API test failed: ' + error.message, false, 'error');
-        showResult('Error details:\n' + error.message);
+        
+        let errorDetails = 'Error details:\n' + error.message;
+        if (error.message.includes('timeout')) {
+            errorDetails += '\n\nThe FFIEC API can be slow. Try increasing the timeout or check if the API is experiencing issues.';
+        }
+        showResult(errorDetails);
     }
 }
 
 async function updateData() {
     try {
-        showStatus('Updating bank data...', true);
+        showStatus('Fetching fresh bank data from FFIEC...', true);
         showResult('');
 
         const netlifyUrl = getNetlifyUrl();
-        const url = netlifyUrl + '/.netlify/functions/ffiec?top=100';
+        const url = netlifyUrl + '/.netlify/functions/ffiec?top=50'; // Smaller batch for testing
         
         console.log('Fetching bank data from:', url);
         
         const response = await fetch(url, {
             method: 'GET',
-            signal: AbortSignal.timeout(45000) // Longer timeout for data update
+            signal: AbortSignal.timeout(60000) // Longer timeout for data update
         });
         
         const text = await response.text();
@@ -251,44 +283,54 @@ async function updateData() {
         try {
             data = JSON.parse(text);
         } catch (e) {
-            data = { rawResponse: text.substring(0, 1000) + '...' };
+            throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
         }
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
+        // Handle API errors (no mock data)
+        if (!response.ok || data.error) {
+            const errorDetails = data.error ? 
+                `${data.message}\n${data.details || ''}` : 
+                `HTTP ${response.status}: ${text}`;
+            throw new Error(errorDetails);
         }
 
         // Analyze the data
         let recordCount = 0;
         let dataSource = 'unknown';
         
-        if (Array.isArray(data)) {
-            recordCount = data.length;
-            dataSource = 'direct array';
-        } else if (data._meta) {
-            dataSource = data._meta.source || 'api';
-            if (Array.isArray(data.data)) recordCount = data.data.length;
-        } else if (data.data && Array.isArray(data.data)) {
+        if (Array.isArray(data.data)) {
             recordCount = data.data.length;
-            dataSource = 'data array';
+            dataSource = data._meta?.source || 'api';
+        } else {
+            throw new Error('Invalid data format returned from API');
         }
 
         let statusMessage = `✅ Data update successful (${recordCount} records)`;
         let statusType = 'success';
         
-        if (dataSource.includes('mock')) {
-            statusMessage = `⚠️ Data update completed with mock data (${recordCount} records)`;
+        // Verify we got real data, not mock
+        if (dataSource.includes('real_data')) {
+            statusMessage = `✅ Successfully fetched ${recordCount} real bank records`;
+        } else {
             statusType = 'warning';
+            statusMessage = `⚠️ Data retrieved but source unclear (${recordCount} records, source: ${dataSource})`;
         }
 
         showStatus(statusMessage, false, statusType);
         
-        // Show abbreviated results for readability
+        // Show comprehensive results
         const resultData = {
+            success: true,
             recordCount: recordCount,
             dataSource: dataSource,
-            sampleRecord: recordCount > 0 ? (Array.isArray(data) ? data[0] : data.data?.[0] || 'N/A') : 'None',
-            _meta: data._meta || 'None'
+            reportingPeriod: data._meta?.reportingPeriod || 'unknown',
+            timestamp: data._meta?.timestamp || new Date().toISOString(),
+            sampleBanks: recordCount > 0 ? data.data.slice(0, 3).map(bank => ({
+                name: bank.bank_name,
+                assets: bank.total_assets,
+                cre_ratio: bank.cre_to_tier1
+            })) : [],
+            metadata: data._meta || {}
         };
         
         showResult('Data update completed:\n' + JSON.stringify(resultData, null, 2));
@@ -296,7 +338,14 @@ async function updateData() {
     } catch (error) {
         console.error('Data update error:', error);
         showStatus('❌ Data update failed: ' + error.message, false, 'error');
-        showResult('Error details:\n' + error.message);
+        
+        let errorDetails = 'Error details:\n' + error.message;
+        if (error.message.includes('CREDENTIALS_MISSING')) {
+            errorDetails += '\n\nPlease configure FFIEC credentials in Netlify environment variables.';
+        } else if (error.message.includes('timeout')) {
+            errorDetails += '\n\nThe FFIEC API is taking too long to respond. Try again or check API status.';
+        }
+        showResult(errorDetails);
     }
 }
 
@@ -333,59 +382,76 @@ async function runComprehensiveTest() {
             });
         }
         
-        // Test 2: Function availability
+        // Test 2: Function availability & credentials
         try {
             const netlifyUrl = getNetlifyUrl();
             const functionResponse = await fetch(netlifyUrl + '/.netlify/functions/ffiec?test=true', {
                 method: 'GET',
-                signal: AbortSignal.timeout(10000)
+                signal: AbortSignal.timeout(15000)
             });
             
             const functionData = await functionResponse.json();
             
             results.tests.push({
-                test: 'Netlify Function Availability',
-                status: functionResponse.ok ? 'PASS' : 'FAIL',
-                details: functionData.status || 'Unknown'
+                test: 'Netlify Function & Credentials',
+                status: functionResponse.ok && functionData.status === 'CREDENTIALS_AVAILABLE' ? 'PASS' : 'FAIL',
+                details: functionData.status || 'Unknown',
+                credentialStatus: functionData.env || {}
             });
-            
-            results.ffiecCredentials = functionData.env || {};
             
         } catch (error) {
             results.tests.push({
-                test: 'Netlify Function Availability',
+                test: 'Netlify Function & Credentials',
                 status: 'FAIL', 
                 error: error.message
             });
         }
         
-        // Test 3: Data retrieval
+        // Test 3: FFIEC API Data Retrieval
         try {
             const netlifyUrl = getNetlifyUrl();
-            const dataResponse = await fetch(netlifyUrl + '/.netlify/functions/ffiec?top=3', {
+            const dataResponse = await fetch(netlifyUrl + '/.netlify/functions/ffiec?top=2', {
                 method: 'GET',
-                signal: AbortSignal.timeout(15000)
+                signal: AbortSignal.timeout(30000)
             });
             
-            const dataResult = await dataResponse.json();
-            let recordCount = 0;
+            const dataText = await dataResponse.text();
+            let dataResult;
             
-            if (Array.isArray(dataResult)) {
-                recordCount = dataResult.length;
-            } else if (dataResult.data && Array.isArray(dataResult.data)) {
-                recordCount = dataResult.data.length;
+            try {
+                dataResult = JSON.parse(dataText);
+            } catch (e) {
+                throw new Error(`Invalid JSON: ${dataText.substring(0, 100)}...`);
+            }
+            
+            let testStatus = 'FAIL';
+            let testDetails = 'Unknown error';
+            
+            if (dataResponse.ok && !dataResult.error) {
+                const recordCount = Array.isArray(dataResult.data) ? dataResult.data.length : 0;
+                if (recordCount > 0) {
+                    testStatus = 'PASS';
+                    testDetails = `${recordCount} records retrieved`;
+                } else {
+                    testDetails = 'No records returned';
+                }
+            } else if (dataResult.error) {
+                testDetails = `API Error: ${dataResult.message}`;
+            } else {
+                testDetails = `HTTP ${dataResponse.status}`;
             }
             
             results.tests.push({
-                test: 'Data Retrieval',
-                status: recordCount > 0 ? 'PASS' : 'FAIL',
-                details: `${recordCount} records retrieved`,
-                dataSource: dataResult._meta?.source || 'unknown'
+                test: 'FFIEC API Data Retrieval',
+                status: testStatus,
+                details: testDetails,
+                dataSource: dataResult._meta?.source || 'unknown',
+                hasRealData: !!(dataResult._meta?.source && dataResult._meta.source.includes('real_data'))
             });
             
         } catch (error) {
             results.tests.push({
-                test: 'Data Retrieval',
+                test: 'FFIEC API Data Retrieval',
                 status: 'FAIL',
                 error: error.message
             });
@@ -407,7 +473,7 @@ async function runComprehensiveTest() {
         
         if (passedTests === 0) {
             overallStatus = 'error';
-            statusMessage = `❌ All tests failed (${passedTests}/${totalTests})`;
+            statusMessage = `❌ All tests failed (0/${totalTests})`;
         } else if (passedTests < totalTests) {
             overallStatus = 'warning';
             statusMessage = `⚠️ Some tests failed (${passedTests}/${totalTests} passed)`;
