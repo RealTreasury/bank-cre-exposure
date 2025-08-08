@@ -16,6 +16,12 @@
   # relative to the base directory.
   functions = "netlify/functions"
 
+# Redirect legacy API paths to Netlify functions
+[[redirects]]
+  from = "/api/fred"
+  to = "/.netlify/functions/fred"
+  status = 200
+
 # This section adds the necessary CORS headers to your function responses.
 [[headers]]
   # Apply these headers to all paths under /.netlify/functions/

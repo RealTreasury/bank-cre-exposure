@@ -37,13 +37,20 @@ async function loadBanksViaNetlify() {
 
 async function fetchMarketData() {
   try {
-    const r = await fetch('/.netlify/functions/fred?series_id=DGS10&limit=30&sort_order=desc');
+    const netlify = (window.bce_data && window.bce_data.netlify_url) || '';
+    if (!netlify) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
+
+    const r = await fetch(
+      `${netlify}/.netlify/functions/fred?series_id=DGS10&limit=30&sort_order=desc`,
+      { signal: AbortSignal.timeout(15000) }
+    );
     if (!r.ok) throw new Error('FRED request failed');
     const json = await r.json();
     const observations = json?.observations || [];
     const last = observations[observations.length - 1];
+
     const el = document.getElementById('market10y');
-    if (el && last?.value) el.textContent = last.value;
+    if (el && last?.value != null) el.textContent = last.value;
   } catch (e) {
     console.error('Error fetching market data:', e);
   }
