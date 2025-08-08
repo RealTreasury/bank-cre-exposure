@@ -7,6 +7,7 @@ async function testFFIECCredentials() {
     // Get credentials from environment variables
     const username = process.env.FFIEC_USERNAME;
     const token = process.env.FFIEC_TOKEN;
+    const DATA_SERIES = 'Call';
 
     console.log('=== FFIEC WS-Security Credentials Test ===\n');
 
@@ -60,21 +61,27 @@ async function testFFIECCredentials() {
         console.log('\n📅 Testing: RetrieveReportingPeriods...');
         
         try {
-            const periodsResult = await client.RetrieveReportingPeriodsPromise({});
-            
-            if (periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string) {
+        const periodsResult = await client.RetrieveReportingPeriodsPromise({
+            dataSeries: DATA_SERIES
+        });
+
+        if (periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string) {
                 const periods = periodsResult[0].RetrieveReportingPeriodsResult.string;
                 const periodsArray = Array.isArray(periods) ? periods : [periods];
-                console.log(`✅ Success! Found ${periodsArray.length} reporting periods`);
-                console.log(`   Latest period: ${periodsArray[periodsArray.length - 1]}`);
-                console.log(`   Available periods: ${periodsArray.slice(-3).join(', ')} (last 3)`);
-                
+                const normalized = periodsArray.map(p =>
+                    String(p).trim().replace(/([0-9]{4})[\/-]?([0-9]{2})[\/-]?([0-9]{2})/, '$1-$2-$3')
+                );
+                console.log(`✅ Success! Found ${normalized.length} reporting periods`);
+                console.log(`   Latest period: ${normalized[normalized.length - 1]}`);
+                console.log(`   Available periods: ${normalized.slice(-3).join(', ')} (last 3)`);
+
                 // Test 2: Try to get panel of reporters
                 console.log('\n🏦 Testing: RetrievePanelOfReporters...');
-                const latestPeriod = periodsArray[periodsArray.length - 1];
-                
+                const latestPeriod = normalized[normalized.length - 1];
+
                 const panelResult = await client.RetrievePanelOfReportersPromise({
-                    ReportingPeriod: latestPeriod
+                    dataSeries: DATA_SERIES,
+                    reportingPeriodEndDate: latestPeriod
                 });
 
                 if (panelResult?.[0]?.RetrievePanelOfReportersResult?.FilerIdentification) {

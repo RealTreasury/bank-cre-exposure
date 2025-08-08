@@ -1,5 +1,9 @@
 const soap = require('soap');
 
+// FFIEC SOAP methods require a dataSeries parameter. The only valid value
+// in the public API is "Call".
+const DATA_SERIES = 'Call';
+
 exports.handler = async (event) => {
   console.log('=== FFIEC FUNCTION START ===');
   console.log('Query params:', event.queryStringParameters);
@@ -90,12 +94,29 @@ exports.handler = async (event) => {
 
     console.log('WS-Security configured, retrieving reporting periods...');
 
-    // Fetch available reporting periods
-    const periodsResult = await client.RetrieveReportingPeriodsPromise({});
+    // Fetch available reporting periods (must include dataSeries)
+    const periodsResult = await client.RetrieveReportingPeriodsPromise({
+      dataSeries: DATA_SERIES
+    });
+
+    const normalize = (s) =>
+      s.replace(/([0-9]{4})[\/-]?([0-9]{2})[\/-]?([0-9]{2})/, '$1-$2-$3');
+
     const raw = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
     const all = (Array.isArray(raw) ? raw : [raw])
-      .map(s => String(s).trim())
+      .map(s => normalize(String(s).trim()))
       .filter(s => /^20\d{2}-(03-31|06-30|09-30|12-31)$/.test(s));
+
+    if (all.length === 0) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'FFIEC_NO_PERIODS',
+          message: 'No reporting periods returned from FFIEC API. Verify API access.',
+        })
+      };
+    }
 
     // Sort by date (oldest → newest)
     all.sort((a, b) => new Date(a) - new Date(b));
@@ -137,7 +158,10 @@ exports.handler = async (event) => {
 
     for (const p of candidates) {
       try {
-        await client.RetrievePanelOfReportersPromise({ ReportingPeriod: p });
+        await client.RetrievePanelOfReportersPromise({
+          dataSeries: DATA_SERIES,
+          reportingPeriodEndDate: p
+        });
         chosen = p;
         break;
       } catch (e) {
@@ -166,7 +190,10 @@ exports.handler = async (event) => {
     console.log('Using reporting period:', chosen);
 
     // Use `chosen` going forward:
-    const panelResult = await client.RetrievePanelOfReportersPromise({ ReportingPeriod: chosen });
+    const panelResult = await client.RetrievePanelOfReportersPromise({
+      dataSeries: DATA_SERIES,
+      reportingPeriodEndDate: chosen
+    });
 
     const reportingPeriod = chosen;
 
