@@ -90,29 +90,30 @@ exports.handler = async (event) => {
 
     console.log('WS-Security configured, retrieving reporting periods...');
 
-    let periodsResult;
-    try {
-      periodsResult = await client.RetrieveReportingPeriodsPromise({});
-      console.log('RetrieveReportingPeriods successful');
-    } catch (error) {
-      console.error('RetrieveReportingPeriods failed:', error.message);
-      throw new Error(`FFIEC authentication failed: ${error.message}`);
-    }
-
+    // Fetch periods
+    const periodsResult = await client.RetrieveReportingPeriodsPromise({});
     const raw = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
-    const periodList = (Array.isArray(raw) ? raw : [raw]).map(s => String(s).trim());
-    const last12 = periodList.slice(-12);
+    const all = (Array.isArray(raw) ? raw : [raw])
+      .map(s => String(s).trim())
+      // keep only quarter-ends in 2000+ for safety
+      .filter(s => /^20\d{2}-(03-31|06-30|09-30|12-31)$/.test(s));
 
-    // Early return for listing periods
-    if (params.list_periods === 'true') {
+    // Sort chronologically (oldest → newest)
+    all.sort((a, b) => new Date(a) - new Date(b));
+
+    // Last 12 (≈ 3 years)
+    const last12 = all.slice(-12);
+
+    // list endpoint for UI
+    if ((params.list_periods || '').toString() === 'true') {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods: last12 })
+        body: JSON.stringify({ periods: [...last12].reverse() }) // newest → oldest for UX
       };
     }
 
-    // allow override via ?reporting_period=YYYY-MM-DD
+    // Validate incoming reporting_period (must be ISO and among last12)
     let requested = (params.reporting_period || '').trim();
     if (requested && !last12.includes(requested)) {
       return {
@@ -120,30 +121,32 @@ exports.handler = async (event) => {
         headers,
         body: JSON.stringify({
           error: 'INVALID_INPUT',
-          message: 'reporting_period is not one of the last 12 valid periods',
-          validPeriods: last12
+          message: 'reporting_period must be one of the last 12 valid ISO quarter-end dates',
+          validPeriods: [...last12].reverse()
         })
       };
     }
 
-    // candidate list: either the requested period first, then others; or just last12 newest->oldest
-    const candidates = requested ? [requested, ...last12.filter(p => p !== requested)] : [...last12].reverse();
+    // Build candidate list: requested first (if any), then newest → oldest
+    const candidates = requested
+      ? [requested, ...[...last12].reverse().filter(p => p !== requested)]
+      : [...last12].reverse();
 
     let chosen = null;
     let lastFault = null;
-    let panelResult;
 
     for (const p of candidates) {
       try {
-        panelResult = await client.RetrievePanelOfReportersPromise({ ReportingPeriod: p });
+        await client.RetrievePanelOfReportersPromise({ ReportingPeriod: p });
         chosen = p;
         break;
       } catch (e) {
-        if (String(e?.message || '').includes('InvalidReportingPeriodEndDate')) {
-          lastFault = e;
+        const msg = String(e?.message || '');
+        if (msg.includes('InvalidReportingPeriodEndDate')) {
+          lastFault = e;        // try the next older quarter
           continue;
         }
-        throw e;
+        throw e;                // different error -> surface immediately
       }
     }
 
@@ -161,6 +164,10 @@ exports.handler = async (event) => {
     }
 
     console.log('Using reporting period:', chosen);
+
+    // Use `chosen` going forward:
+    const panelResult = await client.RetrievePanelOfReportersPromise({ ReportingPeriod: chosen });
+
     const reportingPeriod = chosen;
 
     console.log('Panel result structure:', Object.keys(panelResult?.[0] || {}));

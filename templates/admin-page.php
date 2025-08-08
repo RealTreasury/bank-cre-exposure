@@ -50,8 +50,10 @@ if (!defined('ABSPATH')) {
     <p><?php esc_html_e('Use these tools to diagnose and fix connection issues:', 'bank-cre-exposure'); ?></p>
 
     <div style="margin: 20px 0;">
-        <label for="bce-reporting-period"><?php esc_html_e('Reporting period (last 3 years):', 'bank-cre-exposure'); ?></label>
-        <select id="bce-reporting-period" name="bce-reporting-period"></select>
+        <label for="bce-reporting-period"><strong>Reporting period (last 3 years):</strong></label>
+        <select id="bce-reporting-period" name="bce-reporting-period" class="regular-text">
+            <!-- Options populated by admin.js from Netlify list_periods -->
+        </select>
     </div>
 
     <div style="margin: 20px 0;">
