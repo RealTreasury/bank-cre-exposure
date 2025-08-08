@@ -95,8 +95,7 @@ async function populateReportingPeriodDropdown() {
 }
 
 function getSelectedPeriod() {
-    const el = document.getElementById('bce-reporting-period');
-    return (el && el.value) ? el.value : '';
+    return document.getElementById('bce-reporting-period')?.value || '';
 }
 
 async function testNetlify() {
@@ -222,9 +221,9 @@ async function testFFIEC() {
         // Now try to get actual data (small sample to test API)
         showStatus('Testing FFIEC API with real data request...', true);
 
-        const selectedPeriod = getSelectedPeriod();
+        const period = getSelectedPeriod();
         const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=3' +
-            (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
+            (period ? `&reporting_period=${encodeURIComponent(period)}` : '');
         const dataResponse = await fetch(dataUrl, {
             method: 'GET',
             signal: AbortSignal.timeout(45000) // FFIEC can be slow
@@ -303,9 +302,9 @@ async function updateData() {
         showResult('');
 
         const netlifyUrl = getNetlifyUrl();
-        const selectedPeriod = getSelectedPeriod();
+        const period = getSelectedPeriod();
         const url = netlifyUrl + '/.netlify/functions/ffiec?top=50' +
-            (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : ''); // Smaller batch for testing
+            (period ? `&reporting_period=${encodeURIComponent(period)}` : ''); // Smaller batch for testing
 
         console.log('Fetching bank data from:', url);
 
@@ -400,10 +399,10 @@ async function runComprehensiveTest() {
             const netlifyUrl = getNetlifyUrl();
             results.netlifyUrl = netlifyUrl;
             
-            const basicResponse = await fetch(netlifyUrl, {
-                method: 'GET',
-                signal: AbortSignal.timeout(10000)
-            });
+            const basicResponse = await fetch(
+                netlifyUrl + '/.netlify/functions/ffiec?test=true',
+                { method: 'GET', signal: AbortSignal.timeout(10000) }
+            );
             
             results.tests.push({
                 test: 'Basic Netlify Connectivity',
@@ -446,9 +445,9 @@ async function runComprehensiveTest() {
         // Test 3: FFIEC API Data Retrieval
         try {
             const netlifyUrl = getNetlifyUrl();
-            const selectedPeriod = getSelectedPeriod();
+            const period = getSelectedPeriod();
             const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=2' +
-                (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
+                (period ? `&reporting_period=${encodeURIComponent(period)}` : '');
             const dataResponse = await fetch(dataUrl, {
                 method: 'GET',
                 signal: AbortSignal.timeout(30000)
