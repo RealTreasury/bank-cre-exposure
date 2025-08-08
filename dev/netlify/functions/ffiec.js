@@ -92,65 +92,52 @@ exports.handler = async (event) => {
 
     client.setSecurity(wsSecurity);
 
-    console.log('WS-Security configured, retrieving reporting periods...');
+    console.log('WS-Security configured, generating reporting periods locally...');
 
-    // Fetch available reporting periods (must include dataSeries)
-    const periodsResult = await client.RetrieveReportingPeriodsPromise({
-      dataSeries: DATA_SERIES
-    });
-
-    const normalize = (s) =>
-      s.replace(/([0-9]{4})[\/-]?([0-9]{2})[\/-]?([0-9]{2})/, '$1-$2-$3');
-
-    const raw = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
-    const all = (Array.isArray(raw) ? raw : [raw])
-      .map(s => normalize(String(s).trim()))
-      .filter(s => /^20\d{2}-(03-31|06-30|09-30|12-31)$/.test(s));
-
-    if (all.length === 0) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'FFIEC_NO_PERIODS',
-          message: 'No reporting periods returned from FFIEC API. Verify API access.',
-        })
-      };
+    function generateQuarterEnds() {
+      const today = new Date();
+      const quarters = ['12-31', '09-30', '06-30', '03-31'];
+      const periods = [];
+      for (let y = today.getFullYear(); periods.length < 12; y--) {
+        for (const q of quarters) {
+          const candidate = `${y}-${q}`;
+          if (new Date(candidate) <= today) periods.push(candidate);
+          if (periods.length >= 12) break;
+        }
+      }
+      return periods;
     }
 
-    // Sort by date (oldest → newest)
-    all.sort((a, b) => new Date(a) - new Date(b));
+    // Generate last 12 quarter-end dates (newest → oldest)
+    const generated = generateQuarterEnds();
 
-    // Limit to last 12 (≈ last 3 years)
-    const last12 = all.slice(-12);
-
-    // List endpoint for UI (return newest → oldest)
+    // List endpoint for UI
     if ((params.list_periods || '').toString() === 'true') {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods: [...last12].reverse() })
+        body: JSON.stringify({ periods: generated })
       };
     }
 
-    // Validate requested period (must be one of last12 ISO dates)
+    // Validate requested period (must be one of generated list)
     let requested = (params.reporting_period || '').trim();
-    if (requested && !last12.includes(requested)) {
+    if (requested && !generated.includes(requested)) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
           error: 'INVALID_INPUT',
           message: 'reporting_period must be one of the last 12 valid ISO quarter-end dates',
-          validPeriods: [...last12].reverse()
+          validPeriods: generated
         })
       };
     }
 
-    // Build candidate list: requested first (if any), then newest → oldest
+    // Build candidate list: requested first (if any), then generated list
     const candidates = requested
-      ? [requested, ...[...last12].reverse().filter(p => p !== requested)]
-      : [...last12].reverse();
+      ? [requested, ...generated.filter(p => p !== requested)]
+      : generated;
 
     // Try candidates; on InvalidReportingPeriodEndDate, fallback to older
     let chosen = null;
