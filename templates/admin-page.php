@@ -29,7 +29,6 @@ if (!defined('ABSPATH')) {
             <li><strong>Configure Environment Variables:</strong> In Netlify Dashboard > Site settings > Environment variables, add:
                 <ul style="margin-top: 10px;">
                     <li><code>FFIEC_USERNAME</code> - Your FFIEC Public Web Service username</li>
-                    <li><code>FFIEC_PASSWORD</code> - Your FFIEC Public Web Service password</li>
                     <li><code>FFIEC_TOKEN</code> - Your FFIEC Public Web Service security token</li>
                 </ul>
             </li>
@@ -37,8 +36,8 @@ if (!defined('ABSPATH')) {
                 <ol>
                     <li>Register at <a href="https://cdr.ffiec.gov/public/" target="_blank">FFIEC CDR Public Data Distribution</a></li>
                     <li>Request access to the Public Web Service (PWS) API</li>
-                    <li>Obtain your username, password, and security token</li>
-                    <li>Note: The security token is appended to your password during authentication</li>
+                    <li>Obtain your username and security token</li>
+                    <li>Note: The security token is used as the password during authentication</li>
                 </ol>
             </li>
             <li><strong>Update Netlify URL:</strong> Enter your Netlify site URL above and save</li>
@@ -96,7 +95,7 @@ if (!defined('ABSPATH')) {
         <details>
             <summary style="cursor: pointer; font-weight: bold;">🔑 Credential Issues</summary>
             <ul style="margin-top: 10px;">
-                <li><strong>Missing Credentials:</strong> Add FFIEC_USERNAME, FFIEC_PASSWORD, FFIEC_TOKEN to Netlify environment variables</li>
+                <li><strong>Missing Credentials:</strong> Add FFIEC_USERNAME and FFIEC_TOKEN to Netlify environment variables</li>
                 <li><strong>Invalid Credentials:</strong> Verify your FFIEC account is active and credentials are correct</li>
                 <li><strong>Mock Data Only:</strong> This indicates credentials are missing or invalid</li>
             </ul>

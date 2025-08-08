@@ -12,13 +12,13 @@ BASE_URL = "https://cdr.ffiec.gov/public/PWS"
 logging.basicConfig(level=logging.INFO)
 
 
-def get_auth_headers(username: str, password: str, token: str) -> Dict[str, str]:
+def get_auth_headers(username: str, token: str) -> Dict[str, str]:
     """Return authentication headers for FFIEC PWS.
 
-    The security token is appended to the password and encoded using HTTP Basic
-    authentication.
+    The security token is used as the password when forming the HTTP Basic
+    authentication string.
     """
-    auth_str = f"{username}:{password}{token}"
+    auth_str = f"{username}:{token}"
     b64 = base64.b64encode(auth_str.encode("utf-8")).decode("ascii")
     return {
         "Authorization": f"Basic {b64}",
@@ -84,10 +84,9 @@ if __name__ == "__main__":
     import os
 
     username = os.environ.get("PWS_USERNAME", "your_username")
-    password = os.environ.get("PWS_PASSWORD", "your_password")
     token = os.environ.get("PWS_TOKEN", "your_token")
 
-    headers = get_auth_headers(username, password, token)
+    headers = get_auth_headers(username, token)
 
     try:
         cert_number = "00000"  # Replace with actual FDIC certificate number

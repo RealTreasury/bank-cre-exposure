@@ -41,10 +41,8 @@ The FFIEC Public Web Service (PWS) API provides access to financial institution 
 **Base URL:** `https://cdr.ffiec.gov/public/PWS`
 
 ### Authentication
-Requires HTTP Basic authentication with username, password, and security token:
-```
-Authorization: Basic <base64(username:password+token)>
-```
+The FFIEC SOAP API uses WS-Security UsernameToken authentication. Supply your
+FFIEC username and security token (used as the password).
 
 ### UBPR Search Endpoint
 ```
@@ -81,8 +79,7 @@ The Netlify Functions in this repo need a few secrets for both local and deploye
 | Variable | Purpose |
 | --- | --- |
 | `FFIEC_USERNAME` | Username for the FFIEC Public Web Service. |
-| `FFIEC_PASSWORD` | Password for the FFIEC Public Web Service. |
-| `FFIEC_TOKEN` | Security token appended to your FFIEC password. |
+| `FFIEC_TOKEN` | Security token for the FFIEC Public Web Service (used as password). |
 
 For local development, copy `.env.example` to `.env`, fill in your values, then run from the `dev/` directory:
 
@@ -96,7 +93,6 @@ To configure the variables in your Netlify site, use the CLI from within `dev/`:
 ```bash
 cd dev
 netlify env:set FFIEC_USERNAME your_username
-netlify env:set FFIEC_PASSWORD your_password
 netlify env:set FFIEC_TOKEN your_token
 ```
 
@@ -161,7 +157,6 @@ The repository includes a small Python helper `scripts/ffiec_api.py` for accessi
 2. Provide your PWS credentials as environment variables:
    ```bash
    export PWS_USERNAME="your_username"
-   export PWS_PASSWORD="your_password"
    export PWS_TOKEN="your_security_token"
    ```
 3. Execute the script:
