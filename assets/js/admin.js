@@ -72,26 +72,31 @@ function getNetlifyUrl() {
 async function populateReportingPeriodDropdown() {
     try {
         const netlifyUrl = getNetlifyUrl();
-        const response = await fetch(netlifyUrl + '/.netlify/functions/ffiec?list_periods=true');
-        const data = await response.json();
-        const periods = data.periods || [];
-        const select = document.getElementById('bce-reporting-period');
-        if (select) {
-            periods.reverse().forEach(period => {
-                const option = document.createElement('option');
-                option.value = period;
-                option.textContent = period;
-                select.appendChild(option);
-            });
-        }
+        const res = await fetch(netlifyUrl + '/.netlify/functions/ffiec?list_periods=true', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(15000)
+        });
+        const data = await res.json();
+        const periods = Array.isArray(data.periods) ? data.periods : []; // already newest → oldest
+        const sel = document.getElementById('bce-reporting-period');
+        if (!sel) return;
+        sel.innerHTML = '';
+        periods.forEach(iso => {
+            const opt = document.createElement('option');
+            opt.value = iso; // submit ISO YYYY-MM-DD
+            const [y, m, d] = iso.split('-');
+            opt.textContent = `${m}/${d}/${y}`; // human-friendly label
+            sel.appendChild(opt);
+        });
     } catch (err) {
         console.error('Failed to load reporting periods:', err);
     }
 }
 
-function getSelectedReportingPeriod() {
-    const select = document.getElementById('bce-reporting-period');
-    return select ? select.value : '';
+function getSelectedPeriod() {
+    const el = document.getElementById('bce-reporting-period');
+    return (el && el.value) ? el.value : '';
 }
 
 async function testNetlify() {
@@ -217,7 +222,7 @@ async function testFFIEC() {
         // Now try to get actual data (small sample to test API)
         showStatus('Testing FFIEC API with real data request...', true);
 
-        const selectedPeriod = getSelectedReportingPeriod();
+        const selectedPeriod = getSelectedPeriod();
         const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=3' +
             (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
         const dataResponse = await fetch(dataUrl, {
@@ -298,7 +303,7 @@ async function updateData() {
         showResult('');
 
         const netlifyUrl = getNetlifyUrl();
-        const selectedPeriod = getSelectedReportingPeriod();
+        const selectedPeriod = getSelectedPeriod();
         const url = netlifyUrl + '/.netlify/functions/ffiec?top=50' +
             (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : ''); // Smaller batch for testing
 
@@ -441,7 +446,7 @@ async function runComprehensiveTest() {
         // Test 3: FFIEC API Data Retrieval
         try {
             const netlifyUrl = getNetlifyUrl();
-            const selectedPeriod = getSelectedReportingPeriod();
+            const selectedPeriod = getSelectedPeriod();
             const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=2' +
                 (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
             const dataResponse = await fetch(dataUrl, {
