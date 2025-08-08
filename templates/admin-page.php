@@ -48,7 +48,12 @@ if (!defined('ABSPATH')) {
 
     <h2><?php esc_html_e('Connection Diagnostics', 'bank-cre-exposure'); ?></h2>
     <p><?php esc_html_e('Use these tools to diagnose and fix connection issues:', 'bank-cre-exposure'); ?></p>
-    
+
+    <div style="margin: 20px 0;">
+        <label for="bce-reporting-period"><?php esc_html_e('Reporting period (last 3 years):', 'bank-cre-exposure'); ?></label>
+        <select id="bce-reporting-period" name="bce-reporting-period"></select>
+    </div>
+
     <div style="margin: 20px 0;">
         <button id="bce-comprehensive-test" class="button button-primary" style="margin-right: 10px;">
             <span class="dashicons dashicons-admin-tools" style="margin-top: 3px;"></span>

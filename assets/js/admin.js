@@ -1,8 +1,10 @@
 // Admin scripts for Bank CRE Exposure plugin - FIXED VERSION
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     console.log('Bank CRE Admin interface loaded');
-    
+
+    await populateReportingPeriodDropdown();
+
     const testNetlifyBtn = document.getElementById('bce-test-netlify');
     if (testNetlifyBtn) {
         testNetlifyBtn.addEventListener('click', function(e) {
@@ -65,6 +67,31 @@ function getNetlifyUrl() {
         throw new Error('Missing Netlify URL. Please configure it in the settings above.');
     }
     return netlifyUrl;
+}
+
+async function populateReportingPeriodDropdown() {
+    try {
+        const netlifyUrl = getNetlifyUrl();
+        const response = await fetch(netlifyUrl + '/.netlify/functions/ffiec?list_periods=true');
+        const data = await response.json();
+        const periods = data.periods || [];
+        const select = document.getElementById('bce-reporting-period');
+        if (select) {
+            periods.reverse().forEach(period => {
+                const option = document.createElement('option');
+                option.value = period;
+                option.textContent = period;
+                select.appendChild(option);
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load reporting periods:', err);
+    }
+}
+
+function getSelectedReportingPeriod() {
+    const select = document.getElementById('bce-reporting-period');
+    return select ? select.value : '';
 }
 
 async function testNetlify() {
@@ -189,8 +216,10 @@ async function testFFIEC() {
         
         // Now try to get actual data (small sample to test API)
         showStatus('Testing FFIEC API with real data request...', true);
-        
-        const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=3';
+
+        const selectedPeriod = getSelectedReportingPeriod();
+        const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=3' +
+            (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
         const dataResponse = await fetch(dataUrl, {
             method: 'GET',
             signal: AbortSignal.timeout(45000) // FFIEC can be slow
@@ -269,10 +298,12 @@ async function updateData() {
         showResult('');
 
         const netlifyUrl = getNetlifyUrl();
-        const url = netlifyUrl + '/.netlify/functions/ffiec?top=50'; // Smaller batch for testing
-        
+        const selectedPeriod = getSelectedReportingPeriod();
+        const url = netlifyUrl + '/.netlify/functions/ffiec?top=50' +
+            (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : ''); // Smaller batch for testing
+
         console.log('Fetching bank data from:', url);
-        
+
         const response = await fetch(url, {
             method: 'GET',
             signal: AbortSignal.timeout(60000) // Longer timeout for data update
@@ -410,7 +441,10 @@ async function runComprehensiveTest() {
         // Test 3: FFIEC API Data Retrieval
         try {
             const netlifyUrl = getNetlifyUrl();
-            const dataResponse = await fetch(netlifyUrl + '/.netlify/functions/ffiec?top=2', {
+            const selectedPeriod = getSelectedReportingPeriod();
+            const dataUrl = netlifyUrl + '/.netlify/functions/ffiec?top=2' +
+                (selectedPeriod ? '&reporting_period=' + encodeURIComponent(selectedPeriod) : '');
+            const dataResponse = await fetch(dataUrl, {
                 method: 'GET',
                 signal: AbortSignal.timeout(30000)
             });
