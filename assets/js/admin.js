@@ -69,7 +69,27 @@ function getNetlifyUrl() {
     return netlifyUrl;
 }
 
+// helper: generate last 12 quarter-end dates (newest first)
+function generateQuarterEnds() {
+    const today = new Date();
+    const quarters = ['12-31', '09-30', '06-30', '03-31'];
+    const dates = [];
+    for (let y = today.getFullYear(); dates.length < 12; y--) {
+        for (const q of quarters) {
+            const iso = `${y}-${q}`;
+            if (new Date(iso) <= today) dates.push(iso);
+            if (dates.length >= 12) break;
+        }
+    }
+    return dates;
+}
+
 async function populateReportingPeriodDropdown() {
+    const sel = document.getElementById('bce-reporting-period');
+    if (!sel) return;
+    sel.innerHTML = '';
+
+    let periods = [];
     try {
         const netlifyUrl = getNetlifyUrl();
         const res = await fetch(netlifyUrl + '/.netlify/functions/ffiec?list_periods=true', {
@@ -78,20 +98,24 @@ async function populateReportingPeriodDropdown() {
             signal: AbortSignal.timeout(15000)
         });
         const data = await res.json();
-        const periods = Array.isArray(data.periods) ? data.periods : []; // already newest → oldest
-        const sel = document.getElementById('bce-reporting-period');
-        if (!sel) return;
-        sel.innerHTML = '';
-        periods.forEach(iso => {
-            const opt = document.createElement('option');
-            opt.value = iso; // submit ISO YYYY-MM-DD
-            const [y, m, d] = iso.split('-');
-            opt.textContent = `${m}/${d}/${y}`; // human-friendly label
-            sel.appendChild(opt);
-        });
+        if (Array.isArray(data.periods) && data.periods.length > 0) {
+            periods = data.periods; // already newest → oldest
+        }
     } catch (err) {
         console.error('Failed to load reporting periods:', err);
     }
+
+    if (periods.length === 0) {
+        periods = generateQuarterEnds(); // fallback if server returns no periods
+    }
+
+    periods.forEach(iso => {
+        const opt = document.createElement('option');
+        opt.value = iso; // submit ISO YYYY-MM-DD
+        const [y, m, d] = iso.split('-');
+        opt.textContent = `${m}/${d}/${y}`; // human-friendly label
+        sel.appendChild(opt);
+    });
 }
 
 function getSelectedPeriod() {
