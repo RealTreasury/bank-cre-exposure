@@ -10,19 +10,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadBanksViaNetlify() {
   try {
-    const base = window.bce_data?.netlify_url || '';
+    const base = window.bce_data?.netlify_url; // e.g., https://your-site.netlify.app
     if (!base) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
 
-    const periods = await fetch(
+    const periodsRes = await fetch(
       `${base}/.netlify/functions/ffiec?list_periods=true`,
-      { signal: AbortSignal.timeout(15000) }
-    ).then(r => r.json());
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) }
+    );
+    const periods = await periodsRes.json();
     const rp = (periods?.periods?.[0]) || '2024-09-30';
 
-    const res = await fetch(
-      `${base}/.netlify/functions/ffiec?reporting_period=${encodeURIComponent(rp)}&top=100`,
-      { signal: AbortSignal.timeout(45000) }
-    );
+    const url = `${base}/.netlify/functions/ffiec?reporting_period=${encodeURIComponent(rp)}&top=100`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(45000) });
     if (!res.ok) throw new Error(`FFIEC HTTP ${res.status}`);
 
     const { data = [] } = await res.json();
@@ -52,17 +51,20 @@ async function fetchMarketData() {
 
 function renderBanks(banks) {
   const tbody = document.getElementById('bankTableBody');
-  if (!tbody) {
-    console.log('Bank data:', banks);
-    return;
-  }
+  if (!tbody) return;
   tbody.innerHTML = '';
-  banks.forEach((bank, index) => {
-    const row = document.createElement('tr');
-    const name = bank.bank_name || bank.name || '';
-    const rssd = bank.rssd || bank.ID_Rssd || '';
-    row.innerHTML = `<td>${index + 1}</td><td>${name}</td><td>${rssd}</td>`;
-    tbody.appendChild(row);
+  banks.forEach((b, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${b.bank_name ?? ''}</td>
+      <td>${b.rssd_id ?? ''}</td>
+      <td>${b.cre_to_tier1 ?? '—'}</td>
+      <td>${b.cd_to_tier1 ?? '—'}</td>
+      <td>${b.net_loans_assets ?? '—'}</td>
+      <td>${b.noncurrent_assets_pct ?? '—'}</td>
+    `;
+    tbody.appendChild(tr);
   });
 }
 
