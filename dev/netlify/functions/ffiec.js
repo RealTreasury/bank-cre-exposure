@@ -90,30 +90,29 @@ exports.handler = async (event) => {
 
     console.log('WS-Security configured, retrieving reporting periods...');
 
-    // Fetch periods
+    // Fetch available reporting periods
     const periodsResult = await client.RetrieveReportingPeriodsPromise({});
     const raw = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
     const all = (Array.isArray(raw) ? raw : [raw])
       .map(s => String(s).trim())
-      // keep only quarter-ends in 2000+ for safety
       .filter(s => /^20\d{2}-(03-31|06-30|09-30|12-31)$/.test(s));
 
-    // Sort chronologically (oldest → newest)
+    // Sort by date (oldest → newest)
     all.sort((a, b) => new Date(a) - new Date(b));
 
-    // Last 12 (≈ 3 years)
+    // Limit to last 12 (≈ last 3 years)
     const last12 = all.slice(-12);
 
-    // list endpoint for UI
+    // List endpoint for UI (return newest → oldest)
     if ((params.list_periods || '').toString() === 'true') {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods: [...last12].reverse() }) // newest → oldest for UX
+        body: JSON.stringify({ periods: [...last12].reverse() })
       };
     }
 
-    // Validate incoming reporting_period (must be ISO and among last12)
+    // Validate requested period (must be one of last12 ISO dates)
     let requested = (params.reporting_period || '').trim();
     if (requested && !last12.includes(requested)) {
       return {
@@ -132,6 +131,7 @@ exports.handler = async (event) => {
       ? [requested, ...[...last12].reverse().filter(p => p !== requested)]
       : [...last12].reverse();
 
+    // Try candidates; on InvalidReportingPeriodEndDate, fallback to older
     let chosen = null;
     let lastFault = null;
 
@@ -143,10 +143,10 @@ exports.handler = async (event) => {
       } catch (e) {
         const msg = String(e?.message || '');
         if (msg.includes('InvalidReportingPeriodEndDate')) {
-          lastFault = e;        // try the next older quarter
-          continue;
+          lastFault = e;
+          continue; // try next older
         }
-        throw e;                // different error -> surface immediately
+        throw e; // other errors bubble up
       }
     }
 
