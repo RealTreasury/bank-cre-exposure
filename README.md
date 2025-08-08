@@ -38,39 +38,36 @@ This sample page demonstrates how to render commercial real estate (CRE) exposur
 
 The FFIEC Public Web Service (PWS) API provides access to financial institution data.
 
-**Base URL:** `https://cdr.ffiec.gov/public/PWS`
+**Base URL:** `https://cdr.ffiec.gov/Public/PWS`
 
 ### Authentication
 The FFIEC REST API uses HTTP Basic authentication. Supply your FFIEC username
 and security token (used as the password).
 
-### UBPR Search Endpoint
+### UBPR Search Endpoint (v2)
+The legacy `/UBPR/Search` path is deprecated. UBPR data now comes from the
+v2 public API:
 ```
-GET /UBPR/Search
+https://api.ffiec.gov/public/v2/ubpr/financials
 ```
-
-**Parameters:**
-- `reporting_period` - Date in YYYY-MM-DD format (e.g., 2024-09-30)
-- `limit` - Number of institutions to return
-- `sort_by` - Field to sort by (e.g., total_assets)
-- `sort_order` - asc or desc
-- `metrics` - Comma-separated list of metrics to include
 
 **Example:**
 ```
-https://cdr.ffiec.gov/public/PWS/UBPR/Search?reporting_period=2024-09-30&limit=100&sort_by=total_assets&sort_order=desc
+https://api.ffiec.gov/public/v2/ubpr/financials?filters=REPDTE:20240930&limit=100&format=json
 ```
 
-The response contains a `data` array with each bank's UBPR values. Fields used in this demo include:
+The response contains an array with each bank's UBPR values. Fields used in this
+demo include:
 
-- `bank_name`
-- `total_assets`
-- `net_loans_assets`
-- `noncurrent_assets_pct`
-- `cd_to_tier1`
-- `cre_to_tier1`
+- `NAME`
+- `TA`
+- `NLLR`
+- `NONCURRASSETS`
+- `CDTOTIER1`
+- `CRETOTIER1`
 
-The script in `index.html` fetches the data on page load and builds the table rows dynamically. CRE ratio values determine the risk coloring shown in the table.
+The script in `index.html` fetches the data on page load and builds the table
+rows dynamically. CRE ratio values determine the risk coloring shown in the table.
 
 ## Netlify environment variables
 

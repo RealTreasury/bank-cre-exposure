@@ -22,13 +22,11 @@ async function testFFIECCredentials() {
   const authHeader = Buffer.from(`${username}:${token}`).toString('base64');
 
   try {
-    const resp = await axios.get('https://cdr.ffiec.gov/public/PWS/UBPR/Search', {
+    const resp = await axios.get('https://api.ffiec.gov/public/v2/ubpr/financials', {
       params: {
-        reporting_period: '2024-09-30',
         limit: 1,
-        sort_by: 'total_assets',
-        sort_order: 'desc',
-        metrics: 'bank_name,total_assets',
+        filters: 'REPDTE:20240930',
+        format: 'json',
       },
       headers: {
         Authorization: `Basic ${authHeader}`,
@@ -36,10 +34,12 @@ async function testFFIECCredentials() {
       },
     });
 
-    if (Array.isArray(resp.data?.data) && resp.data.data.length > 0) {
-      const bank = resp.data.data[0];
+    const data = Array.isArray(resp.data) ? resp.data : resp.data?.data;
+
+    if (Array.isArray(data) && data.length > 0) {
+      const bank = data[0];
       console.log('✅ Credentials verified. Sample institution:');
-      console.log(`   • ${bank.bank_name} (assets: ${bank.total_assets})`);
+      console.log(`   • ${bank.NAME} (assets: ${bank.TA})`);
     } else {
       console.log('⚠️ Request succeeded but no data returned.');
     }
