@@ -16,22 +16,19 @@ exports.handler = async (event) => {
 
   const params = event.queryStringParameters || {};
   const username = process.env.FFIEC_USERNAME;
-  const password = process.env.FFIEC_PASSWORD;
   const token = process.env.FFIEC_TOKEN;
 
   console.log('Environment check:', {
     hasUsername: !!username,
-    hasPassword: !!password,
     hasToken: !!token
   });
 
   // Credentials check
-  if (!username || !password || !token) {
+  if (!username || !token) {
     const missing = [];
     if (!username) missing.push('FFIEC_USERNAME');
-    if (!password) missing.push('FFIEC_PASSWORD');
     if (!token) missing.push('FFIEC_TOKEN');
-    
+
     return {
       statusCode: 200,
       headers,
@@ -41,7 +38,6 @@ exports.handler = async (event) => {
         missing: missing,
         env: {
           hasUsername: !!username,
-          hasPassword: !!password,
           hasToken: !!token
         }
       }),
@@ -60,7 +56,6 @@ exports.handler = async (event) => {
         authMethod: 'WS-Security UsernameToken',
         env: {
           hasUsername: true,
-          hasPassword: true,
           hasToken: true
         }
       }),
@@ -82,8 +77,8 @@ exports.handler = async (event) => {
     console.log('SOAP client created, setting WS-Security...');
 
     // FIXED: Use WS-Security with UsernameToken instead of Basic Auth
-    // The password+token combination is used as the password field
-    const wsSecurityPassword = password + token;
+    // The security token is used as the password
+    const wsSecurityPassword = token;
     
     const wsSecurity = new soap.WSSecurity(username, wsSecurityPassword, {
       passwordType: 'PasswordText',
@@ -196,7 +191,7 @@ exports.handler = async (event) => {
         timestamp: new Date().toISOString(),
         troubleshooting: {
           authMethod: 'WS-Security UsernameToken required',
-          credentialsFormat: 'username + (password + token)',
+          credentialsFormat: 'username + token (security token as password)',
           commonIssues: [
             'Invalid FFIEC credentials',
             'Account not authorized for API access',

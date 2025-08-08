@@ -6,7 +6,6 @@ const soap = require('soap');
 async function testFFIECCredentials() {
     // Get credentials from environment variables
     const username = process.env.FFIEC_USERNAME;
-    const password = process.env.FFIEC_PASSWORD;
     const token = process.env.FFIEC_TOKEN;
 
     console.log('=== FFIEC WS-Security Credentials Test ===\n');
@@ -14,7 +13,6 @@ async function testFFIECCredentials() {
     // Check if all credentials are provided
     const missing = [];
     if (!username) missing.push('FFIEC_USERNAME');
-    if (!password) missing.push('FFIEC_PASSWORD');
     if (!token) missing.push('FFIEC_TOKEN');
 
     if (missing.length > 0) {
@@ -29,9 +27,7 @@ async function testFFIECCredentials() {
 
     console.log('✅ All environment variables present');
     console.log(`   • Username: ${username}`);
-    console.log(`   • Password: ${'*'.repeat(password.length)}`);
-    console.log(`   • Token: ${'*'.repeat(token.length)}`);
-    console.log(`   • Combined password+token: ${'*'.repeat((password + token).length)}\n`);
+    console.log(`   • Token: ${'*'.repeat(token.length)}\n`);
 
     try {
         console.log('🔌 Connecting to FFIEC SOAP API...');
@@ -49,7 +45,7 @@ async function testFFIECCredentials() {
         // FIXED: Use WS-Security instead of Basic Auth
         console.log('🔐 Setting up WS-Security authentication...');
         
-        const wsSecurityPassword = password + token; // Token is appended to password
+        const wsSecurityPassword = token; // Use token as the password
         
         const wsSecurity = new soap.WSSecurity(username, wsSecurityPassword, {
             passwordType: 'PasswordText',
@@ -122,7 +118,6 @@ async function testFFIECCredentials() {
             } else if (authError.message.includes('Unauthorized') || authError.message.includes('401')) {
                 console.log('\n🔍 Authentication failed - check your credentials:');
                 console.log('   • Verify your FFIEC username is correct');
-                console.log('   • Verify your FFIEC password is correct');
                 console.log('   • Verify your security token is correct');
                 console.log('   • Ensure your account has API access enabled');
             }
@@ -144,7 +139,7 @@ async function testFFIECCredentials() {
             console.log('\n🔍 WS-Security issue:');
             console.log('   • The FFIEC API requires WS-Security with UsernameToken');
             console.log('   • We are using the correct method, but credentials may be wrong');
-            console.log('   • Double-check your username, password, and token');
+            console.log('   • Double-check your username and token');
         } else if (error.message.includes('timeout')) {
             console.log('\n🔍 Timeout issue:');
             console.log('   • FFIEC API may be slow or down');
