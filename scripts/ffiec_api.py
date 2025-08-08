@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-BASE_URL = "https://cdr.ffiec.gov/public/PWS"
+# Base for legacy endpoints that still live on the CDR site
+BASE_URL = "https://cdr.ffiec.gov/Public/PWS"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -59,9 +60,30 @@ def search_call_report(params: Dict[str, Any], headers: Dict[str, str]) -> Any:
     return _request("/CallReport/Search", headers, params=params)
 
 
-def search_ubpr(params: Dict[str, Any], headers: Dict[str, str]) -> Any:
-    """Search UBPR data."""
-    return _request("/UBPR/Search", headers, params=params)
+def search_ubpr(
+    params: Dict[str, Any],
+    headers: Dict[str, str],
+    max_retries: int = 3,
+    backoff: float = 1.0,
+) -> Any:
+    """Search UBPR data using the v2 public API."""
+    url = "https://api.ffiec.gov/public/v2/ubpr/financials"
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            logging.warning(
+                "Request to %s failed on attempt %d/%d: %s",
+                url,
+                attempt,
+                max_retries,
+                exc,
+            )
+            if attempt == max_retries:
+                raise
+            time.sleep(backoff * attempt)
 
 
 def save_json(data: Any, path: str) -> None:
