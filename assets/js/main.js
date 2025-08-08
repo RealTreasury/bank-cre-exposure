@@ -27,7 +27,7 @@ async function loadBankData() {
         console.log('Starting data fetch...');
         const result = await fetchBankData();
         
-        if (result.success) {
+        if (result.success && result.data && result.data.length > 0) {
             bankData = result.data;
             displayBankData(bankData);
             updateStatistics(bankData);
@@ -38,7 +38,12 @@ async function loadBankData() {
             
             updateAPIStatus('connected', statusMessage);
         } else {
-            throw new Error(result.error || 'Failed to load data');
+            console.warn('No bank records returned from API, using fallback data');
+            bankData = generateClientSideMockData();
+            addBankRankingsAndRisk(bankData);
+            displayBankData(bankData);
+            updateStatistics(bankData);
+            updateAPIStatus('error', 'Using fallback data - API connection failed');
         }
 
         updateLastUpdated();
@@ -49,7 +54,10 @@ async function loadBankData() {
     } finally {
         isLoading = false;
         showLoading(false);
-        document.getElementById('refreshBtn')?.classList.remove('loading');
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) {
+            refreshBtn.classList.remove('loading');
+        }
     }
 }
 
@@ -93,10 +101,10 @@ async function fetchBankData() {
             console.log('🔍 Raw API Response:', {
                 dataType: typeof data,
                 isArray: Array.isArray(data),
-                hasNumberedKeys: typeof data['0'] !== 'undefined',
+                hasData: !!data.data,
                 hasMeta: !!data._meta,
                 keys: Object.keys(data).slice(0, 10), // First 10 keys
-                sampleRecord: data['0'] || data[0] || 'Not found'
+                sampleRecord: data.data?.[0] || data[0] || 'Not found'
             });
 
             return processAPIResponse(data);
@@ -229,7 +237,7 @@ function addBankRankingsAndRisk(banks) {
 
 // Client-side fallback data
 function generateClientSideMockData() {
-    return [
+    const mockData = [
         {
             bank_name: "JPMorgan Chase Bank, National Association",
             total_assets: 3200000000,
@@ -279,6 +287,15 @@ function generateClientSideMockData() {
             cre_to_tier1: 398.4
         }
     ];
+
+    return mockData.map((item, index) => ({
+        name: item.bank_name,
+        assets: item.total_assets,
+        netLoansToAssets: item.net_loans_assets,
+        nonCurrToAssets: item.noncurrent_assets_pct,
+        cdLoansRatio: item.cd_to_tier1,
+        creLoansRatio: item.cre_to_tier1
+    }));
 }
 
 // Handle data loading errors
@@ -309,15 +326,8 @@ function handleDataLoadError(error) {
     
     // Load fallback data so the interface isn't completely broken
     console.log('Loading fallback data due to error');
-    bankData = addBankRankingsAndRisk(generateClientSideMockData().map(item => ({
-        name: item.bank_name,
-        assets: item.total_assets,
-        netLoansToAssets: item.net_loans_assets,
-        nonCurrToAssets: item.noncurrent_assets_pct,
-        cdLoansRatio: item.cd_to_tier1,
-        creLoansRatio: item.cre_to_tier1
-    })));
-    
+    bankData = generateClientSideMockData();
+    addBankRankingsAndRisk(bankData);
     displayBankData(bankData);
     updateStatistics(bankData);
 }
@@ -385,17 +395,11 @@ function updateStatistics(data) {
         // High risk count
         const highRiskCount = data.filter(bank => bank.creLoansRatio > 400).length;
 
-        // Update UI elements
+        // Update UI elements safely
         updateStatElement('statBanksCount', banksCount);
         updateStatElement('statHighestCRE', highestCRE.toFixed(2) + '%');
         updateStatElement('statLargestAssets', formatLargeNumber(largestAssets));
         updateStatElement('statHighRiskCount', highRiskCount);
-
-        // Optional 10-year element
-        const tenYearEl = document.getElementById('statTenYear');
-        if (tenYearEl) {
-            updateStatElement('statTenYear', 'N/A');
-        }
 
         console.log('Statistics updated:', { banksCount, highestCRE, largestAssets, highRiskCount });
     } catch (error) {
@@ -403,12 +407,14 @@ function updateStatistics(data) {
     }
 }
 
-// Helper function to update stat elements
+// Helper function to update stat elements safely
 function updateStatElement(id, value) {
     const element = document.getElementById(id);
     if (element) {
         element.textContent = value;
         element.classList.remove('loading');
+    } else {
+        console.warn(`Element with id '${id}' not found`);
     }
 }
 
