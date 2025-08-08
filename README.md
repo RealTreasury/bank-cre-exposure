@@ -34,27 +34,33 @@ This plugin is automatically pushed to the WordPress site
 
 This sample page demonstrates how to render commercial real estate (CRE) exposure metrics for U.S. banks. The table in `index.html` is populated using the FFIEC Uniform Bank Performance Report (UBPR) API.
 
-## UBPR API
+## FFIEC PWS API
 
-The UBPR API provides call report data in JSON format.
+The FFIEC Public Web Service (PWS) API provides access to financial institution data.
 
-**Endpoint**
+**Base URL:** `https://cdr.ffiec.gov/public/PWS`
 
+### Authentication
+Requires HTTP Basic authentication with username, password, and security token:
 ```
-https://api.ffiec.gov/public/v2/ubpr/financials
+Authorization: Basic <base64(username:password+token)>
 ```
 
-### Common parameters
-
-- `as_of` – reporting date in `YYYY-MM-DD` format.
-- `top` – number of institutions to return.
-- `sort` – field to sort by (for example `assets`).
-- `order` – `asc` or `desc`.
-
-**Example request**
-
+### UBPR Search Endpoint
 ```
-https://api.ffiec.gov/public/v2/ubpr/financials?as_of=2024-09-30&top=100&sort=assets&order=desc
+GET /UBPR/Search
+```
+
+**Parameters:**
+- `reporting_period` - Date in YYYY-MM-DD format (e.g., 2024-09-30)
+- `limit` - Number of institutions to return
+- `sort_by` - Field to sort by (e.g., total_assets)
+- `sort_order` - asc or desc
+- `metrics` - Comma-separated list of metrics to include
+
+**Example:**
+```
+https://cdr.ffiec.gov/public/PWS/UBPR/Search?reporting_period=2024-09-30&limit=100&sort_by=total_assets&sort_order=desc
 ```
 
 The response contains a `data` array with each bank's UBPR values. Fields used in this demo include:
