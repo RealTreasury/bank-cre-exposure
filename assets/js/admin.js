@@ -130,6 +130,9 @@ async function testNetlify() {
         const netlifyUrl = getNetlifyUrl();
         console.log('Testing Netlify URL:', netlifyUrl);
 
+        // Quick health check to populate reporting periods
+        await populateReportingPeriodDropdown();
+
         // Test basic connectivity first
         const healthUrl = netlifyUrl + '/.netlify/functions/ffiec?test=true';
         console.log('Health check URL:', healthUrl);
