@@ -1,7 +1,8 @@
 const soap = require('soap');
 
 exports.handler = async (event) => {
-  console.log('=== FFIEC SOAP FUNCTION START ===');
+  console.log('=== FFIEC FUNCTION START ===');
+  console.log('Query params:', event.queryStringParameters);
 
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -15,16 +16,34 @@ exports.handler = async (event) => {
 
   const params = event.queryStringParameters || {};
   const username = process.env.FFIEC_USERNAME;
+  const password = process.env.FFIEC_PASSWORD;  // ADDED: Missing password
   const token = process.env.FFIEC_TOKEN;
 
-  // Credentials check
-  if (!username || !token) {
+  console.log('Environment check:', {
+    hasUsername: !!username,
+    hasPassword: !!password,  // ADDED
+    hasToken: !!token
+  });
+
+  // Credentials check - NOW INCLUDES PASSWORD
+  if (!username || !password || !token) {
+    const missing = [];
+    if (!username) missing.push('FFIEC_USERNAME');
+    if (!password) missing.push('FFIEC_PASSWORD');
+    if (!token) missing.push('FFIEC_TOKEN');
+    
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         status: 'CREDENTIALS_MISSING',
-        message: 'FFIEC_USERNAME and FFIEC_TOKEN required'
+        message: `Missing environment variables: ${missing.join(', ')}`,
+        missing: missing,
+        env: {
+          hasUsername: !!username,
+          hasPassword: !!password,
+          hasToken: !!token
+        }
       }),
     };
   }
@@ -37,113 +56,137 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         status: 'CREDENTIALS_AVAILABLE',
         service: 'SOAP',
-        endpoint: 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL'
+        endpoint: 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL',
+        env: {
+          hasUsername: true,
+          hasPassword: true,
+          hasToken: true
+        }
       }),
     };
   }
 
   try {
     const wsdlUrl = 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL';
-    const top = parseInt(params.top, 10) || 100;
+    const top = parseInt(params.top, 10) || 50;
     
-    // Create SOAP client
+    console.log('Creating SOAP client...');
+    
+    // Create SOAP client with timeout
     const client = await soap.createClientAsync(wsdlUrl, {
-      overridePromiseSuffix: 'Promise'
+      overridePromiseSuffix: 'Promise',
+      timeout: 30000
     });
 
-    // Set authentication (username + security token)
-    client.setSecurity(new soap.BasicAuthSecurity(username, token));
+    console.log('SOAP client created, setting security...');
+
+    // FIXED: Set proper authentication (username:password+token)
+    const authString = `${username}:${password}${token}`;
+    const base64Auth = Buffer.from(authString).toString('base64');
+    
+    // Set custom headers for authentication
+    client.addHttpHeader('Authorization', `Basic ${base64Auth}`);
+
+    console.log('Getting reporting periods...');
 
     // Get latest reporting period
     const periodsResult = await client.RetrieveReportingPeriodsPromise({});
-    let latestPeriod = '2024-09-30';
-    if (periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string?.length > 0) {
+    console.log('Periods result:', JSON.stringify(periodsResult, null, 2));
+    
+    let latestPeriod = '2024-09-30'; // Fallback
+    if (periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string) {
       const periods = periodsResult[0].RetrieveReportingPeriodsResult.string;
-      latestPeriod = periods[periods.length - 1];
+      if (Array.isArray(periods) && periods.length > 0) {
+        latestPeriod = periods[periods.length - 1];
+      } else if (typeof periods === 'string') {
+        latestPeriod = periods;
+      }
     }
 
-    // Get panel of reporters (bank list)
-    const panelResult = await client.RetrievePanelOfReportersPromise({
-      ReportingPeriod: latestPeriod
+    console.log('Using reporting period:', latestPeriod);
+
+    // REMOVED: No more mock data fallback - if this fails, we want to see the real error
+    
+    // Get UBPR data directly for top institutions
+    console.log('Fetching UBPR data...');
+    
+    const ubprResult = await client.RetrieveUBPRDataPromise({
+      ReportingPeriod: latestPeriod,
+      // Add filters for largest institutions
+      TopInstitutions: top,
+      // Request specific UBPR ratios we need
+      Ratios: [
+        'RCON2170', // Total assets
+        'UBPRD169', // Net loans and leases to assets
+        'UBPR5390', // Noncurrent assets and loans to total assets
+        'UBPRE986', // Construction and development loans to Tier 1 capital plus allowances
+        'UBPRE985'  // CRE loans to Tier 1 capital plus allowances
+      ]
     });
 
-    let banksList = [];
-    if (panelResult?.[0]?.RetrievePanelOfReportersResult?.FilerIdentification) {
-      const result = panelResult[0].RetrievePanelOfReportersResult.FilerIdentification;
-      banksList = Array.isArray(result) ? result : [result];
+    console.log('UBPR result structure:', Object.keys(ubprResult?.[0] || {}));
+
+    // Process real UBPR data
+    let banksData = [];
+    
+    if (ubprResult?.[0]?.RetrieveUBPRDataResult?.InstitutionData) {
+      const institutions = ubprResult[0].RetrieveUBPRDataResult.InstitutionData;
+      const institutionsArray = Array.isArray(institutions) ? institutions : [institutions];
+      
+      banksData = institutionsArray.map((inst, index) => {
+        // Extract real financial data from UBPR
+        const ratios = inst.Ratios || {};
+        
+        return {
+          bank_name: inst.InstitutionName || inst.Name || `Institution ${index + 1}`,
+          rssd_id: inst.IDRssd || inst.RSSD_ID,
+          // REAL DATA from UBPR (not mock)
+          total_assets: parseFloat(ratios.RCON2170) || 0,
+          net_loans_assets: parseFloat(ratios.UBPRD169) || 0,
+          noncurrent_assets_pct: parseFloat(ratios.UBPR5390) || 0,
+          cd_to_tier1: parseFloat(ratios.UBPRE986) || 0,
+          cre_to_tier1: parseFloat(ratios.UBPRE985) || 0,
+        };
+      });
     }
 
-    if (banksList.length === 0) {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          data: generateMockBankData(top),
-          _meta: { source: 'mock_data_no_panel', recordCount: top }
-        }),
-      };
+    // If no data was returned, throw an error instead of using mock data
+    if (banksData.length === 0) {
+      throw new Error('No UBPR data returned from FFIEC API. Check your credentials and API access.');
     }
 
-    // Process banks (limited to top N)
-    const limitedBanks = banksList.slice(0, Math.min(top, banksList.length));
-    const processedBanks = limitedBanks.map((bank, index) => ({
-      bank_name: bank.Name || bank.BankName || `Bank ${index + 1}`,
-      rssd_id: bank.IDRssd || bank.RSSD_ID,
-      total_assets: Math.floor(Math.random() * 1000000000) + 10000000,
-      net_loans_assets: Number((Math.random() * 30 + 50).toFixed(2)),
-      noncurrent_assets_pct: Number((Math.random() * 3).toFixed(2)),
-      cd_to_tier1: Number((Math.random() * 100 + 20).toFixed(2)),
-      cre_to_tier1: Number((Math.random() * 400 + 100).toFixed(2)),
-    }));
+    // Sort by total assets (descending)
+    banksData.sort((a, b) => b.total_assets - a.total_assets);
 
-    processedBanks.sort((a, b) => b.total_assets - a.total_assets);
+    console.log(`Successfully processed ${banksData.length} institutions`);
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        data: processedBanks,
+        data: banksData,
         _meta: {
-          source: 'ffiec_soap_api',
-          recordCount: processedBanks.length,
-          reportingPeriod: latestPeriod
+          source: 'ffiec_ubpr_api_real_data',
+          recordCount: banksData.length,
+          reportingPeriod: latestPeriod,
+          timestamp: new Date().toISOString()
         }
       }),
     };
 
   } catch (error) {
-    console.error('SOAP request failed:', error);
+    console.error('FFIEC API Error:', error);
+    
+    // REMOVED: No more mock data on error - return the actual error
     return {
-      statusCode: 200,
+      statusCode: 500,
       headers,
       body: JSON.stringify({
-        data: generateMockBankData(parseInt(params.top, 10) || 100),
-        _meta: {
-          source: 'mock_data_soap_error',
-          error: error.message
-        }
+        error: 'FFIEC_API_ERROR',
+        message: error.message,
+        details: error.stack,
+        timestamp: new Date().toISOString()
       }),
     };
   }
 };
-
-function generateMockBankData(count = 100) {
-  const bankNames = [
-    "JPMorgan Chase Bank", "Bank of America", "Wells Fargo Bank",
-    "Citibank", "U.S. Bank", "Truist Bank", "PNC Bank",
-    "Capital One Bank", "TD Bank", "Fifth Third Bank",
-    "Citizens Bank", "KeyBank", "Huntington Bank", "Regions Bank"
-  ];
-
-  return Array.from({ length: count }, (_, index) => {
-    const assetSize = Math.pow(10, 6 + Math.random() * 4);
-    return {
-      bank_name: bankNames[index % bankNames.length] + (index >= bankNames.length ? ` ${Math.floor(index / bankNames.length) + 1}` : ''),
-      total_assets: Math.floor(assetSize),
-      net_loans_assets: Number((Math.random() * 30 + 50).toFixed(2)),
-      noncurrent_assets_pct: Number((Math.random() * 3).toFixed(2)),
-      cd_to_tier1: Number((Math.random() * 100 + 20).toFixed(2)),
-      cre_to_tier1: Number((Math.random() * 400 + 100).toFixed(2)),
-    };
-  }).sort((a, b) => b.total_assets - a.total_assets);
-}
