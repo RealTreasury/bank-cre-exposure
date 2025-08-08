@@ -1,219 +1,188 @@
 const axios = require('axios');
 
-// Correct FFIEC PWS API base URL
-const PWS_BASE_URL = 'https://cdr.ffiec.gov/public/PWS';
-
-// Mock response when credentials are missing or API fails
-function buildMockData(limit) {
-  const mockBanks = [
-    {
-      bank_name: "JPMorgan Chase Bank, National Association",
-      total_assets: 3200000000,
-      net_loans_assets: 65.5,
-      noncurrent_assets_pct: 0.8,
-      cd_to_tier1: 45.2,
-      cre_to_tier1: 180.3
-    },
-    {
-      bank_name: "Bank of America, National Association", 
-      total_assets: 2500000000,
-      net_loans_assets: 68.2,
-      noncurrent_assets_pct: 1.1,
-      cd_to_tier1: 52.1,
-      cre_to_tier1: 205.7
-    },
-    {
-      bank_name: "Wells Fargo Bank, National Association",
-      total_assets: 1900000000,
-      net_loans_assets: 70.1,
-      noncurrent_assets_pct: 1.3,
-      cd_to_tier1: 65.8,
-      cre_to_tier1: 275.4
-    },
-    {
-      bank_name: "Citibank, National Association",
-      total_assets: 1700000000,
-      net_loans_assets: 62.3,
-      noncurrent_assets_pct: 0.9,
-      cd_to_tier1: 38.7,
-      cre_to_tier1: 165.2
-    },
-    {
-      bank_name: "U.S. Bank National Association",
-      total_assets: 550000000,
-      net_loans_assets: 72.8,
-      noncurrent_assets_pct: 1.8,
-      cd_to_tier1: 89.3,
-      cre_to_tier1: 345.6
-    }
-  ];
-
-  return {
-    _meta: {
-      source: 'mock_data',
-      timestamp: new Date().toISOString(),
-      record_count: Math.min(limit, mockBanks.length)
-    },
-    data: mockBanks.slice(0, limit)
-  };
-}
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
-
-function getAuthHeaders(username, password, token) {
-  const authString = `${username}:${password}${token}`;
-  const encoded = Buffer.from(authString).toString('base64');
-  return {
-    'Authorization': `Basic ${encoded}`,
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  };
-}
-
-async function searchUBPR(headers, params = {}) {
-  // Try multiple FFIEC endpoints to find working one
-  const endpoints = [
-    `${PWS_BASE_URL}/UBPR/Search`,
-    `${PWS_BASE_URL}/CallReport/Search`,
-    'https://api.ffiec.gov/public/v2/ubpr/financials'
-  ];
-
-  const searchParams = {
-    reporting_period: '2024-09-30',
-    limit: params.top || 100,
-    sort_by: 'total_assets',
-    sort_order: 'desc',
-    top: params.top || 100,
-    as_of: '2024-09-30'
-  };
-
-  let lastError;
-  
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`Trying endpoint: ${endpoint}`);
-      
-      const response = await axios.get(endpoint, {
-        headers: endpoint.includes('api.ffiec.gov') ? { 'Accept': 'application/json' } : headers,
-        params: searchParams,
-        timeout: 30000
-      });
-
-      console.log(`Success with endpoint: ${endpoint}`);
-      return response.data;
-    } catch (error) {
-      console.warn(`Endpoint ${endpoint} failed:`, error.message);
-      lastError = error;
-      continue;
-    }
-  }
-
-  throw lastError;
-}
-
 exports.handler = async (event) => {
-  console.log('FFIEC function called with event:', JSON.stringify(event, null, 2));
+  console.log('=== FFIEC DIAGNOSTIC START ===');
+  console.log('Event:', JSON.stringify(event, null, 2));
 
-  // Handle preflight requests
+  // CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  };
+
+  // Handle OPTIONS
   if (event.httpMethod === 'OPTIONS') {
-    return { 
-      statusCode: 204, 
-      headers: CORS_HEADERS, 
-      body: '' 
-    };
+    return { statusCode: 204, headers, body: '' };
   }
 
   const params = event.queryStringParameters || {};
-  console.log('Query parameters:', params);
+  console.log('Query params:', params);
+
+  // Log any FFIEC-related environment variables
+  console.log(
+    'All environment variables starting with FFIEC:',
+    Object.keys(process.env)
+      .filter((key) => key.startsWith('FFIEC'))
+      .map((key) => ({
+        [key]: process.env[key] ? `${process.env[key].substring(0, 3)}...` : 'undefined',
+      }))
+  );
+
+  // Environment check
+  const username = process.env.FFIEC_USERNAME;
+  const password = process.env.FFIEC_PASSWORD;
+  const token = process.env.FFIEC_TOKEN;
+
+  console.log('Environment variables check:', {
+    hasUsername: !!username,
+    hasPassword: !!password,
+    hasToken: !!token,
+    usernameLength: username ? username.length : 0,
+    passwordLength: password ? password.length : 0,
+    tokenLength: token ? token.length : 0,
+  });
+
+  // FAIL FAST if credentials missing
+  if (!username || !password || !token) {
+    const error = {
+      error: 'CREDENTIALS_MISSING',
+      message: 'Environment variables not configured',
+      missing: {
+        FFIEC_USERNAME: !username,
+        FFIEC_PASSWORD: !password,
+        FFIEC_TOKEN: !token,
+      },
+    };
+    console.log('ERROR - Missing credentials:', error);
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify(error),
+    };
+  }
 
   // Health check endpoint
   if (params.test === 'true') {
-    const username = process.env.FFIEC_USERNAME;
-    const password = process.env.FFIEC_PASSWORD;
-    const token = process.env.FFIEC_TOKEN;
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        status: 'CREDENTIALS_AVAILABLE',
+        message: 'All environment variables are configured',
+      }),
+    };
+  }
 
-    if (!username || !password || !token) {
+  // Test basic internet connectivity
+  try {
+    await axios.get('https://httpbin.org/get', { timeout: 5000 });
+    console.log('Internet connectivity: OK');
+  } catch (error) {
+    console.log('Internet connectivity: FAILED', error.message);
+  }
+
+  // Build auth header
+  const authString = `${username}:${password}${token}`;
+  const authHeader = Buffer.from(authString).toString('base64');
+  console.log('Auth string length:', authString.length);
+  console.log('Auth header (first 20 chars):', authHeader.substring(0, 20) + '...');
+
+  // Try multiple endpoints with detailed logging
+  const endpoints = [
+    'https://cdr.ffiec.gov/public/PWS/UBPR/Search',
+    'https://cdr.ffiec.gov/public/PWS/CallReport/Search',
+    'https://api.ffiec.gov/public/v2/ubpr/financials',
+  ];
+
+  const top = parseInt(params.top, 10) || 10;
+
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`\n--- TRYING ENDPOINT: ${endpoint} ---`);
+
+      const requestConfig = {
+        method: 'GET',
+        url: endpoint,
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      };
+
+      // Add different params for different endpoints
+      if (endpoint.includes('api.ffiec.gov')) {
+        requestConfig.params = {
+          as_of: '2024-09-30',
+          top: top,
+          sort: 'assets',
+          order: 'desc',
+        };
+      } else {
+        requestConfig.params = {
+          reporting_period: '2024-09-30',
+          limit: top,
+          sort_by: 'total_assets',
+          sort_order: 'desc',
+        };
+      }
+
+      console.log('Request config:', JSON.stringify(requestConfig, null, 2));
+
+      const response = await axios(requestConfig);
+
+      console.log('SUCCESS! Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      console.log('Response data type:', typeof response.data);
+      console.log('Response data (first 500 chars):', JSON.stringify(response.data).substring(0, 500));
+
       return {
         statusCode: 200,
-        headers: CORS_HEADERS,
+        headers,
         body: JSON.stringify({
-          status: 'CREDENTIALS_MISSING',
-          message: 'FFIEC credentials not configured in environment variables',
-          env: {
-            FFIEC_USERNAME: !!username,
-            FFIEC_PASSWORD: !!password,
-            FFIEC_TOKEN: !!token
-          }
-        })
+          success: true,
+          endpoint_used: endpoint,
+          response_status: response.status,
+          data_type: typeof response.data,
+          data: response.data,
+        }),
       };
+    } catch (error) {
+      console.log(`FAILED - ${endpoint}:`, {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        code: error.code,
+        config: error.config
+          ? {
+              url: error.config.url,
+              method: error.config.method,
+              params: error.config.params,
+            }
+          : 'no config',
+      });
+
+      // Continue to next endpoint
     }
-
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({
-        status: 'OK',
-        message: 'FFIEC credentials are configured',
-        endpoint: PWS_BASE_URL
-      })
-    };
   }
 
-  // Main data request
-  const top = parseInt(params.top, 10) || 100;
-  const username = process.env.FFIEC_USERNAME;
-  const password = process.env.FFIEC_PASSWORD; 
-  const token = process.env.FFIEC_TOKEN;
+  // All endpoints failed
+  const finalError = {
+    error: 'ALL_ENDPOINTS_FAILED',
+    message: 'All FFIEC endpoints returned errors',
+    endpoints_tried: endpoints,
+    check_logs: 'See function logs for detailed error information',
+  };
 
-  // If credentials are missing, return mock data
-  if (!username || !password || !token) {
-    console.warn('FFIEC credentials missing. Using mock data.');
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify(buildMockData(top))
-    };
-  }
+  console.log('FINAL ERROR:', finalError);
 
-  try {
-    const headers = getAuthHeaders(username, password, token);
-    const data = await searchUBPR(headers, { top });
-    
-    // Add metadata
-    const response = {
-      _meta: {
-        source: 'ffiec_api',
-        timestamp: new Date().toISOString(),
-        endpoint: PWS_BASE_URL,
-        record_count: Array.isArray(data) ? data.length : (data.data ? data.data.length : 0)
-      },
-      data: Array.isArray(data) ? data : data.data || data
-    };
-
-    console.log(`Successfully fetched ${response._meta.record_count} records from FFIEC`);
-
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify(response)
-    };
-
-  } catch (error) {
-    console.error('FFIEC API error:', error.message);
-    
-    // Return mock data on API failure
-    const mockResponse = buildMockData(top);
-    mockResponse._meta.source = 'mock_data_fallback';
-    mockResponse._meta.error = error.message;
-
-    return {
-      statusCode: 200,
-      headers: CORS_HEADERS,
-      body: JSON.stringify(mockResponse)
-    };
-  }
+  return {
+    statusCode: 500,
+    headers,
+    body: JSON.stringify(finalError),
+  };
 };
+
