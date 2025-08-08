@@ -1,69 +1,53 @@
 /**
- * Bank CRE Exposure front-end (SOAP version)
- * Sends SOAP requests to FFIEC RetrievalService and renders the results.
- * FRED logic removed.
+ * Bank CRE Exposure front-end.
+ * Fetches FFIEC bank data and FRED market data via Netlify functions.
  */
-const SOAP_URL = 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx';
-const SOAP_ACTION = 'http://www.ffiec.gov/PWS/WebServices/RetrievalService/RetrievePanelOfReporters';
 
 document.addEventListener('DOMContentLoaded', () => {
-  loadBanks().catch(err => showError(err.message || 'Unknown error'));
+  loadBanksViaNetlify().catch(err => showError(err.message || 'Unknown error'));
+  fetchMarketData().catch(err => console.error('Error fetching market data:', err));
 });
 
-async function loadBanks() {
-  const envelope = `<?xml version="1.0" encoding="utf-8"?>
-    <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-                   xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-      <soap:Body>
-        <RetrievePanelOfReporters xmlns="http://www.ffiec.gov/PWS/WebServices/">
-          <ReportingPeriod></ReportingPeriod>
-        </RetrievePanelOfReporters>
-      </soap:Body>
-    </soap:Envelope>`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000); // 45-second timeout
-
+async function loadBanksViaNetlify() {
   try {
-    const response = await fetch(SOAP_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': SOAP_ACTION
-      },
-      body: envelope,
-      signal: controller.signal
-    });
+    const base = window.bce_data?.netlify_url || '';
+    if (!base) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
+    const periods = await fetch(
+      `${base}/.netlify/functions/ffiec?list_periods=true`,
+      { signal: AbortSignal.timeout(15000) }
+    ).then(r => r.json());
+    const rp = (periods?.periods?.[0]) || '2024-09-30';
 
-    const xmlText = await response.text();
-    const banks = parseBankList(xmlText);
-    renderBanks(banks);
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      showError('Request timed out after 45 seconds');
-    } else {
-      showError(error.message || String(error));
+    const res = await fetch(
+      `${base}/.netlify/functions/ffiec?reporting_period=${encodeURIComponent(rp)}&top=100`,
+      { signal: AbortSignal.timeout(45000) }
+    );
+    if (!res.ok) throw new Error(`FFIEC HTTP ${res.status}`);
+
+    const { data = [] } = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      console.warn('No bank records returned from API');
     }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+    renderBanks(data);
+  } catch (e) {
+    console.error('FFIEC load failed:', e);
+    showError('FFIEC load failed: ' + e.message);
   }
 }
 
-function parseBankList(xmlText) {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(xmlText, 'text/xml');
-  const nodes = Array.from(xml.getElementsByTagName('FilerIdentification'));
-  return nodes.map(node => ({
-    name: node.getElementsByTagName('Name')[0]?.textContent || '',
-    rssd: node.getElementsByTagName('ID_Rssd')[0]?.textContent ||
-          node.getElementsByTagName('ID_RSSD')[0]?.textContent || ''
-  }));
+async function fetchMarketData() {
+  try {
+    const r = await fetch('/.netlify/functions/fred?series_id=DGS10&limit=30&sort_order=desc');
+    if (!r.ok) throw new Error('FRED request failed');
+    const json = await r.json();
+    const observations = json?.observations || [];
+    const last = observations[observations.length - 1];
+    const el = document.getElementById('market10y');
+    if (el && last?.value) el.textContent = last.value;
+  } catch (e) {
+    console.error('Error fetching market data:', e);
+  }
 }
 
 function renderBanks(banks) {
@@ -75,7 +59,9 @@ function renderBanks(banks) {
   tbody.innerHTML = '';
   banks.forEach((bank, index) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${index + 1}</td><td>${bank.name}</td><td>${bank.rssd}</td>`;
+    const name = bank.bank_name || bank.name || '';
+    const rssd = bank.rssd || bank.ID_Rssd || '';
+    row.innerHTML = `<td>${index + 1}</td><td>${name}</td><td>${rssd}</td>`;
     tbody.appendChild(row);
   });
 }
@@ -86,5 +72,6 @@ function showError(message) {
     div.textContent = message;
     div.style.display = 'block';
   }
-  console.error('SOAP Error:', message);
+  console.error('Error:', message);
 }
+
