@@ -65,9 +65,9 @@ exports.handler = async (event) => {
   try {
     const wsdlUrl = 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL';
     const top = parseInt(params.top, 10) || 50;
-    
+
     console.log('Creating SOAP client...');
-    
+
     // Create SOAP client with timeout
     const client = await soap.createClientAsync(wsdlUrl, {
       overridePromiseSuffix: 'Promise',
@@ -79,18 +79,17 @@ exports.handler = async (event) => {
     // FIXED: Use WS-Security with UsernameToken instead of Basic Auth
     // The security token is used as the password
     const wsSecurityPassword = token;
-    
+
     const wsSecurity = new soap.WSSecurity(username, wsSecurityPassword, {
       passwordType: 'PasswordText',
       hasTimeStamp: false,
       hasTokenCreated: false
     });
-    
+
     client.setSecurity(wsSecurity);
 
-    console.log('WS-Security configured, testing with RetrieveReportingPeriods...');
+    console.log('WS-Security configured, retrieving reporting periods...');
 
-    // Test the connection first with a simple call
     let periodsResult;
     try {
       periodsResult = await client.RetrieveReportingPeriodsPromise({});
@@ -99,24 +98,33 @@ exports.handler = async (event) => {
       console.error('RetrieveReportingPeriods failed:', error.message);
       throw new Error(`FFIEC authentication failed: ${error.message}`);
     }
-    
-    // Get latest reporting period
-    let latestPeriod = '2024-09-30'; // Fallback
-    if (periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string) {
-      const periods = periodsResult[0].RetrieveReportingPeriodsResult.string;
-      if (Array.isArray(periods) && periods.length > 0) {
-        latestPeriod = periods[periods.length - 1];
-      } else if (typeof periods === 'string') {
-        latestPeriod = periods;
-      }
+
+    const periods = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
+    const periodList = Array.isArray(periods) ? periods : [periods];
+    const recentPeriods = periodList.slice(-12);
+
+    // Early return for listing periods
+    if (params.list_periods === 'true') {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ periods: recentPeriods })
+      };
     }
 
-    console.log('Using reporting period:', latestPeriod);
+    // Determine reporting period
+    const requestedPeriod = params.reporting_period;
+    let reportingPeriod = recentPeriods[recentPeriods.length - 1] || '2024-09-30';
+    if (requestedPeriod && recentPeriods.includes(requestedPeriod)) {
+      reportingPeriod = requestedPeriod;
+    }
+
+    console.log('Using reporting period:', reportingPeriod);
     console.log('Getting panel of reporters...');
 
     // Get panel of reporters (bank list)
     const panelResult = await client.RetrievePanelOfReportersPromise({
-      ReportingPeriod: latestPeriod
+      ReportingPeriod: reportingPeriod
     });
 
     console.log('Panel result structure:', Object.keys(panelResult?.[0] || {}));
@@ -170,7 +178,7 @@ exports.handler = async (event) => {
         _meta: {
           source: 'ffiec_soap_api_real_banks',
           recordCount: processedBanks.length,
-          reportingPeriod: latestPeriod,
+          reportingPeriod: reportingPeriod,
           timestamp: new Date().toISOString(),
           note: 'Bank names from FFIEC API, financial ratios are representative examples'
         }
