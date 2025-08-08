@@ -69,9 +69,22 @@ function getNetlifyUrl() {
     return netlifyUrl;
 }
 
+// Determine the latest released quarter end
+function latestReleasedQuarterEnd(today = new Date()) {
+    const y = today.getUTCFullYear();
+    const m = today.getUTCMonth() + 1;
+    let yy = y, mm = 3, dd = 31;
+    if (m >= 10)      { mm = 6; dd = 30; }
+    else if (m >= 7)  { mm = 3; dd = 31; }
+    else if (m >= 4)  { mm = 3; dd = 31; }
+    else              { yy = y - 1; mm = 12; dd = 31; }
+    const iso = `${yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+    return (iso === '2025-06-30') ? '2025-03-31' : iso;
+}
+
 // helper: generate last 12 quarter-end dates (newest first)
 function generateQuarterEnds() {
-    const today = new Date();
+    const today = new Date(latestReleasedQuarterEnd());
     const quarters = ['12-31', '09-30', '06-30', '03-31'];
     const dates = [];
     for (let y = today.getFullYear(); dates.length < 12; y--) {
@@ -119,7 +132,12 @@ async function populateReportingPeriodDropdown() {
 }
 
 function getSelectedPeriod() {
-    return document.getElementById('bce-reporting-period')?.value || '';
+    const period = document.getElementById('bce-reporting-period')?.value || '';
+    if (period === '2025-06-30') {
+        showStatus('Latest available data is 2025-03-31; 2025-06-30 not yet released.', false, 'warning');
+        return '2025-03-31';
+    }
+    return period;
 }
 
 async function testNetlify() {

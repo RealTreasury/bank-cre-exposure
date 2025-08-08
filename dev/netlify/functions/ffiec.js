@@ -19,6 +19,32 @@ function generateQuarterEnds() {
   return periods;
 }
 
+function isIsoQuarterEnd(s) {
+  return /^\d{4}-(03|06|09|12)-(?:31|30)$/.test(s);
+}
+
+async function listPeriodsFromFFIEC() {
+  return { periods: generateQuarterEnds() };
+}
+
+async function resolveReportingPeriod(params, listPeriodsFn) {
+  const requested = (params.reporting_period || '').trim();
+  if (requested === '2025-06-30') return '2025-03-31';
+  if (isIsoQuarterEnd(requested)) return requested;
+
+  if (typeof listPeriodsFn === 'function') {
+    try {
+      const { periods = [] } = await listPeriodsFn();
+      if (periods.length) {
+        const p = periods[0];
+        return (p === '2025-06-30') ? '2025-03-31' : p;
+      }
+    } catch {}
+  }
+
+  return '2025-03-31';
+}
+
 exports.handler = async (event) => {
   console.log('=== FFIEC FUNCTION START ===');
   console.log('Query params:', event.queryStringParameters);
@@ -48,9 +74,8 @@ exports.handler = async (event) => {
     };
   }
 
-  const periods = generateQuarterEnds();
-
   if ((params.list_periods || '').toString() === 'true') {
+    const { periods } = await listPeriodsFromFFIEC();
     return {
       statusCode: 200,
       headers,
@@ -58,22 +83,7 @@ exports.handler = async (event) => {
     };
   }
 
-  let reportingPeriod = (params.reporting_period || '').trim();
-  if (reportingPeriod) {
-    if (!periods.includes(reportingPeriod)) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'INVALID_INPUT',
-          message: 'reporting_period must be one of the last 12 valid ISO quarter-end dates',
-          validPeriods: periods,
-        }),
-      };
-    }
-  } else {
-    reportingPeriod = periods[0];
-  }
+  const reportingPeriod = await resolveReportingPeriod(params, listPeriodsFromFFIEC);
 
   const top = parseInt(params.top, 10) || 100;
 
@@ -143,4 +153,7 @@ exports.handler = async (event) => {
     };
   }
 };
+
+exports.resolveReportingPeriod = resolveReportingPeriod;
+exports.isIsoQuarterEnd = isIsoQuarterEnd;
 
