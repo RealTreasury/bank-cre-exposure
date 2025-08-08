@@ -16,3 +16,5 @@ This plugin converts the original GitHub Pages project into a WordPress plugin, 
 == Configuration ==
 
 After activating the plugin, visit the **Bank CRE Exposure** settings page in your WordPress admin. The plugin automatically sets the Netlify URL option to `https://stirring-pixie-0b3931.netlify.app` so it points to the correct deployment. Adjust this value if you are using a different Netlify site.
+
+The reporting-period dropdown will always show the most recent twelve quarter ends. If the Netlify function fails to return periods, the dates are generated locally as a fallback.
