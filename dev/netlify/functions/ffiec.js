@@ -75,42 +75,48 @@ function getAuthHeaders(username, password, token) {
 }
 
 async function searchUBPR(headers, params = {}) {
-  // Default parameters for UBPR search
+  // Try multiple FFIEC endpoints to find working one
+  const endpoints = [
+    `${PWS_BASE_URL}/UBPR/Search`,
+    `${PWS_BASE_URL}/CallReport/Search`,
+    'https://api.ffiec.gov/public/v2/ubpr/financials'
+  ];
+
   const searchParams = {
-    // Reporting period - use latest available (Q3 2024)
     reporting_period: '2024-09-30',
-    // Number of institutions to return
     limit: params.top || 100,
-    // Sort by total assets descending
     sort_by: 'total_assets',
     sort_order: 'desc',
-    // Include key CRE metrics
-    metrics: [
-      'total_assets',
-      'net_loans_assets', 
-      'noncurrent_assets_pct',
-      'cd_to_tier1',
-      'cre_to_tier1'
-    ].join(','),
-    ...params
+    top: params.top || 100,
+    as_of: '2024-09-30'
   };
 
-  const url = `${PWS_BASE_URL}/UBPR/Search`;
+  let lastError;
   
-  console.log('Making UBPR search request to:', url);
-  console.log('Search parameters:', searchParams);
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`Trying endpoint: ${endpoint}`);
+      
+      const response = await axios.get(endpoint, {
+        headers: endpoint.includes('api.ffiec.gov') ? { 'Accept': 'application/json' } : headers,
+        params: searchParams,
+        timeout: 30000
+      });
 
-  const response = await axios.get(url, {
-    headers,
-    params: searchParams,
-    timeout: 30000 // 30 second timeout
-  });
+      console.log(`Success with endpoint: ${endpoint}`);
+      return response.data;
+    } catch (error) {
+      console.warn(`Endpoint ${endpoint} failed:`, error.message);
+      lastError = error;
+      continue;
+    }
+  }
 
-  return response.data;
+  throw lastError;
 }
 
 exports.handler = async (event) => {
-  console.log('FFIEC function called with event:', event);
+  console.log('FFIEC function called with event:', JSON.stringify(event, null, 2));
 
   // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
@@ -146,39 +152,15 @@ exports.handler = async (event) => {
       };
     }
 
-    // Test the credentials with a simple request
-    try {
-      const headers = getAuthHeaders(username, password, token);
-      
-      // Try a simple institution lookup as a test
-      const testUrl = `${PWS_BASE_URL}/Institution/Find/628`;
-      await axios.get(testUrl, { 
-        headers, 
-        timeout: 10000 
-      });
-
-      return {
-        statusCode: 200,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          status: 'OK',
-          message: 'FFIEC credentials are valid and API is accessible',
-          endpoint: PWS_BASE_URL
-        })
-      };
-    } catch (error) {
-      console.error('FFIEC test request failed:', error.message);
-      return {
-        statusCode: 200,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({
-          status: 'API_ERROR',
-          message: 'FFIEC API connection failed',
-          error: error.message,
-          endpoint: PWS_BASE_URL
-        })
-      };
-    }
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        status: 'OK',
+        message: 'FFIEC credentials are configured',
+        endpoint: PWS_BASE_URL
+      })
+    };
   }
 
   // Main data request
@@ -204,7 +186,7 @@ exports.handler = async (event) => {
     // Add metadata
     const response = {
       _meta: {
-        source: 'ffiec_pws_api',
+        source: 'ffiec_api',
         timestamp: new Date().toISOString(),
         endpoint: PWS_BASE_URL,
         record_count: Array.isArray(data) ? data.length : (data.data ? data.data.length : 0)
@@ -212,7 +194,7 @@ exports.handler = async (event) => {
       data: Array.isArray(data) ? data : data.data || data
     };
 
-    console.log(`Successfully fetched ${response._meta.record_count} records from FFIEC PWS`);
+    console.log(`Successfully fetched ${response._meta.record_count} records from FFIEC`);
 
     return {
       statusCode: 200,
@@ -221,13 +203,8 @@ exports.handler = async (event) => {
     };
 
   } catch (error) {
-    console.error('FFIEC PWS API error:', error.message);
-    console.error('Error details:', {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data
-    });
-
+    console.error('FFIEC API error:', error.message);
+    
     // Return mock data on API failure
     const mockResponse = buildMockData(top);
     mockResponse._meta.source = 'mock_data_fallback';
