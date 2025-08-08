@@ -1,21 +1,32 @@
-const soap = require('soap');
+const axios = require('axios');
 
-// FFIEC SOAP methods require a dataSeries parameter. The only valid value
-// in the public API is "Call".
-const DATA_SERIES = 'Call';
+// Generate last 12 quarter-end dates (newest → oldest)
+function generateQuarterEnds() {
+  const today = new Date();
+  const quarters = ['12-31', '09-30', '06-30', '03-31'];
+  const periods = [];
+  for (let y = today.getFullYear(); periods.length < 12; y--) {
+    for (const q of quarters) {
+      const candidate = `${y}-${q}`;
+      if (new Date(candidate) <= today) periods.push(candidate);
+      if (periods.length >= 12) break;
+    }
+  }
+  return periods;
+}
 
 exports.handler = async (event) => {
   console.log('=== FFIEC FUNCTION START ===');
   console.log('Query params:', event.queryStringParameters);
 
-  const headers = {
+  const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
   };
 
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
+    return { statusCode: 204, headers: corsHeaders, body: '' };
   }
 
   const params = event.queryStringParameters || {};
@@ -24,7 +35,7 @@ exports.handler = async (event) => {
 
   console.log('Environment check:', {
     hasUsername: !!username,
-    hasToken: !!token
+    hasToken: !!token,
   });
 
   // Credentials check
@@ -35,15 +46,15 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers,
+      headers: corsHeaders,
       body: JSON.stringify({
         status: 'CREDENTIALS_MISSING',
         message: `Missing environment variables: ${missing.join(', ')}`,
-        missing: missing,
+        missing,
         env: {
           hasUsername: !!username,
-          hasToken: !!token
-        }
+          hasToken: !!token,
+        },
       }),
     };
   }
@@ -52,218 +63,97 @@ exports.handler = async (event) => {
   if (params.test === 'true') {
     return {
       statusCode: 200,
-      headers,
+      headers: corsHeaders,
       body: JSON.stringify({
         status: 'CREDENTIALS_AVAILABLE',
-        service: 'SOAP_WS_SECURITY',
-        endpoint: 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL',
-        authMethod: 'WS-Security UsernameToken',
+        service: 'REST_BASIC_AUTH',
+        endpoint: 'https://cdr.ffiec.gov/public/PWS/UBPR/Search',
+        authMethod: 'HTTP Basic',
         env: {
           hasUsername: true,
-          hasToken: true
-        }
+          hasToken: true,
+        },
       }),
     };
   }
 
-  try {
-    const wsdlUrl = 'https://cdr.ffiec.gov/Public/PWS/WebServices/RetrievalService.asmx?WSDL';
-    const top = parseInt(params.top, 10) || 50;
+  const periods = generateQuarterEnds();
 
-    console.log('Creating SOAP client...');
+  if ((params.list_periods || '').toString() === 'true') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify({ periods }),
+    };
+  }
 
-    // Create SOAP client with timeout
-    const client = await soap.createClientAsync(wsdlUrl, {
-      overridePromiseSuffix: 'Promise',
-      timeout: 30000
-    });
-
-    console.log('SOAP client created, setting WS-Security...');
-
-    // FIXED: Use WS-Security with UsernameToken instead of Basic Auth
-    // The security token is used as the password
-    const wsSecurityPassword = token;
-
-    const wsSecurity = new soap.WSSecurity(username, wsSecurityPassword, {
-      passwordType: 'PasswordText',
-      hasTimeStamp: false,
-      hasTokenCreated: false
-    });
-
-    client.setSecurity(wsSecurity);
-
-    console.log('WS-Security configured, generating reporting periods locally...');
-
-    function generateQuarterEnds() {
-      const today = new Date();
-      const quarters = ['12-31', '09-30', '06-30', '03-31'];
-      const periods = [];
-      for (let y = today.getFullYear(); periods.length < 12; y--) {
-        for (const q of quarters) {
-          const candidate = `${y}-${q}`;
-          if (new Date(candidate) <= today) periods.push(candidate);
-          if (periods.length >= 12) break;
-        }
-      }
-      return periods;
-    }
-
-    // Generate last 12 quarter-end dates (newest → oldest)
-    const generated = generateQuarterEnds();
-
-    // List endpoint for UI
-    if ((params.list_periods || '').toString() === 'true') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ periods: generated })
-      };
-    }
-
-    // Validate requested period (must be one of generated list)
-    let requested = (params.reporting_period || '').trim();
-    if (requested && !generated.includes(requested)) {
+  let reportingPeriod = (params.reporting_period || '').trim();
+  if (reportingPeriod) {
+    if (!periods.includes(reportingPeriod)) {
       return {
         statusCode: 400,
-        headers,
+        headers: corsHeaders,
         body: JSON.stringify({
           error: 'INVALID_INPUT',
           message: 'reporting_period must be one of the last 12 valid ISO quarter-end dates',
-          validPeriods: generated
-        })
+          validPeriods: periods,
+        }),
       };
     }
+  } else {
+    reportingPeriod = periods[0];
+  }
 
-    // Build candidate list: requested first (if any), then generated list
-    const candidates = requested
-      ? [requested, ...generated.filter(p => p !== requested)]
-      : generated;
+  const limit = parseInt(params.top, 10) || 50;
 
-    // Try candidates; on InvalidReportingPeriodEndDate, fallback to older
-    let chosen = null;
-    let lastFault = null;
+  const authHeader = Buffer.from(`${username}:${token}`).toString('base64');
 
-    for (const p of candidates) {
-      try {
-        await client.RetrievePanelOfReportersPromise({
-          dataSeries: DATA_SERIES,
-          reportingPeriodEndDate: p
-        });
-        chosen = p;
-        break;
-      } catch (e) {
-        const msg = String(e?.message || '');
-        if (msg.includes('InvalidReportingPeriodEndDate')) {
-          lastFault = e;
-          continue; // try next older
-        }
-        throw e; // other errors bubble up
-      }
-    }
-
-    if (!chosen) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'FFIEC_INVALID_PERIOD',
-          message: 'No acceptable reporting period found among the last 12.',
-          triedPeriods: candidates,
-          details: String(lastFault || 'n/a')
-        })
-      };
-    }
-
-    console.log('Using reporting period:', chosen);
-
-    // Use `chosen` going forward:
-    const panelResult = await client.RetrievePanelOfReportersPromise({
-      dataSeries: DATA_SERIES,
-      reportingPeriodEndDate: chosen
+  try {
+    const response = await axios.get('https://cdr.ffiec.gov/public/PWS/UBPR/Search', {
+      params: {
+        reporting_period: reportingPeriod,
+        limit,
+        sort_by: 'total_assets',
+        sort_order: 'desc',
+        metrics: 'bank_name,total_assets,net_loans_assets,noncurrent_assets_pct,cd_to_tier1,cre_to_tier1',
+      },
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+      timeout: 30000,
     });
 
-    const reportingPeriod = chosen;
-
-    console.log('Panel result structure:', Object.keys(panelResult?.[0] || {}));
-
-    let banksList = [];
-    if (panelResult?.[0]?.RetrievePanelOfReportersResult?.FilerIdentification) {
-      const result = panelResult[0].RetrievePanelOfReportersResult.FilerIdentification;
-      banksList = Array.isArray(result) ? result : [result];
-    }
-
-    if (banksList.length === 0) {
-      throw new Error('No banks returned from RetrievePanelOfReporters. Check your API access permissions.');
-    }
-
-    console.log(`Found ${banksList.length} banks, processing top ${Math.min(top, banksList.length)}...`);
-
-    // Process banks and get their RSSD IDs for UBPR data
-    const limitedBanks = banksList.slice(0, Math.min(top, banksList.length));
-    
-    // For now, we'll use the basic bank info and add placeholder financial data
-    // because getting individual UBPR data for each bank would require multiple API calls
-    const processedBanks = await Promise.all(limitedBanks.map(async (bank, index) => {
-      const rssdId = bank.IDRssd || bank.RSSD_ID || bank.Id_Rssd;
-      const bankName = bank.Name || bank.BankName || `Bank ${index + 1}`;
-      
-      // For demo purposes, we'll create realistic-looking data based on bank size
-      // In a production system, you'd fetch real UBPR data for each RSSD ID
-      const assetSize = Math.pow(10, 7 + Math.random() * 4); // $10M to $100B range
-      
-      return {
-        bank_name: bankName,
-        rssd_id: rssdId,
-        total_assets: Math.floor(assetSize),
-        net_loans_assets: Number((60 + Math.random() * 25).toFixed(2)), // 60-85%
-        noncurrent_assets_pct: Number((Math.random() * 4).toFixed(2)), // 0-4%
-        cd_to_tier1: Number((20 + Math.random() * 150).toFixed(2)), // 20-170%
-        cre_to_tier1: Number((50 + Math.random() * 450).toFixed(2)), // 50-500%
-      };
-    }));
-
-    // Sort by total assets (descending)
-    processedBanks.sort((a, b) => b.total_assets - a.total_assets);
-
-    console.log(`Successfully processed ${processedBanks.length} institutions with real bank names`);
+    const data = Array.isArray(response.data?.data) ? response.data.data : [];
 
     return {
       statusCode: 200,
-      headers,
+      headers: corsHeaders,
       body: JSON.stringify({
-        data: processedBanks,
+        data,
         _meta: {
-          source: 'ffiec_soap_api_real_banks',
-          recordCount: processedBanks.length,
-          reportingPeriod: reportingPeriod,
+          source: 'ffiec_rest_api_real_data',
+          recordCount: data.length,
+          reportingPeriod,
           timestamp: new Date().toISOString(),
-          note: 'Bank names from FFIEC API, financial ratios are representative examples'
-        }
+        },
       }),
     };
-
   } catch (error) {
     console.error('FFIEC API Error:', error);
-    
-    // Return the actual error without mock data
+
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.message || error.message;
+
     return {
-      statusCode: 500,
-      headers,
+      statusCode: status,
+      headers: corsHeaders,
       body: JSON.stringify({
         error: 'FFIEC_API_ERROR',
-        message: error.message,
-        details: error.stack,
+        message,
         timestamp: new Date().toISOString(),
-        troubleshooting: {
-          authMethod: 'WS-Security UsernameToken required',
-          credentialsFormat: 'username + token (security token as password)',
-          commonIssues: [
-            'Invalid FFIEC credentials',
-            'Account not authorized for API access',
-            'FFIEC service temporarily unavailable'
-          ]
-        }
       }),
     };
   }
 };
+

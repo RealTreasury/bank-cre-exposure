@@ -41,8 +41,8 @@ The FFIEC Public Web Service (PWS) API provides access to financial institution 
 **Base URL:** `https://cdr.ffiec.gov/public/PWS`
 
 ### Authentication
-The FFIEC SOAP API uses WS-Security UsernameToken authentication. Supply your
-FFIEC username and security token (used as the password).
+The FFIEC REST API uses HTTP Basic authentication. Supply your FFIEC username
+and security token (used as the password).
 
 ### UBPR Search Endpoint
 ```
