@@ -33,7 +33,14 @@ if (!defined('ABSPATH')) {
                     <li><code>FFIEC_TOKEN</code> - Your FFIEC Public Web Service security token</li>
                 </ul>
             </li>
-            <li><strong>Get FFIEC Credentials:</strong> Register at <a href="https://cdr.ffiec.gov/public/" target="_blank">FFIEC CDR Public Data Distribution</a></li>
+            <li><strong>Get FFIEC Credentials:</strong> 
+                <ol>
+                    <li>Register at <a href="https://cdr.ffiec.gov/public/" target="_blank">FFIEC CDR Public Data Distribution</a></li>
+                    <li>Request access to the Public Web Service (PWS) API</li>
+                    <li>Obtain your username, password, and security token</li>
+                    <li>Note: The security token is appended to your password during authentication</li>
+                </ol>
+            </li>
             <li><strong>Update Netlify URL:</strong> Enter your Netlify site URL above and save</li>
             <li><strong>Test Connection:</strong> Use the diagnostic tools below</li>
         </ol>
