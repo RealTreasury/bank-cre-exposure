@@ -99,33 +99,69 @@ exports.handler = async (event) => {
       throw new Error(`FFIEC authentication failed: ${error.message}`);
     }
 
-    const periods = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
-    const periodList = Array.isArray(periods) ? periods : [periods];
-    const recentPeriods = periodList.slice(-12);
+    const raw = periodsResult?.[0]?.RetrieveReportingPeriodsResult?.string || [];
+    const periodList = (Array.isArray(raw) ? raw : [raw]).map(s => String(s).trim());
+    const last12 = periodList.slice(-12);
 
     // Early return for listing periods
     if (params.list_periods === 'true') {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods: recentPeriods })
+        body: JSON.stringify({ periods: last12 })
       };
     }
 
-    // Determine reporting period
-    const requestedPeriod = params.reporting_period;
-    let reportingPeriod = recentPeriods[recentPeriods.length - 1] || '2024-09-30';
-    if (requestedPeriod && recentPeriods.includes(requestedPeriod)) {
-      reportingPeriod = requestedPeriod;
+    // allow override via ?reporting_period=YYYY-MM-DD
+    let requested = (params.reporting_period || '').trim();
+    if (requested && !last12.includes(requested)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'INVALID_INPUT',
+          message: 'reporting_period is not one of the last 12 valid periods',
+          validPeriods: last12
+        })
+      };
     }
 
-    console.log('Using reporting period:', reportingPeriod);
-    console.log('Getting panel of reporters...');
+    // candidate list: either the requested period first, then others; or just last12 newest->oldest
+    const candidates = requested ? [requested, ...last12.filter(p => p !== requested)] : [...last12].reverse();
 
-    // Get panel of reporters (bank list)
-    const panelResult = await client.RetrievePanelOfReportersPromise({
-      ReportingPeriod: reportingPeriod
-    });
+    let chosen = null;
+    let lastFault = null;
+    let panelResult;
+
+    for (const p of candidates) {
+      try {
+        panelResult = await client.RetrievePanelOfReportersPromise({ ReportingPeriod: p });
+        chosen = p;
+        break;
+      } catch (e) {
+        if (String(e?.message || '').includes('InvalidReportingPeriodEndDate')) {
+          lastFault = e;
+          continue;
+        }
+        throw e;
+      }
+    }
+
+    if (!chosen) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'FFIEC_INVALID_PERIOD',
+          message: 'No acceptable reporting period found among the last 12.',
+          triedPeriods: candidates,
+          details: String(lastFault || 'n/a')
+        })
+      };
+    }
+
+    console.log('Using reporting period:', chosen);
+    const reportingPeriod = chosen;
 
     console.log('Panel result structure:', Object.keys(panelResult?.[0] || {}));
 
