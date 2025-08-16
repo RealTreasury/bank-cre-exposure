@@ -85,7 +85,7 @@ async function fetchMarketData() {
 }
 
 function renderBanks(banks) {
-  const tbody = document.getElementById('bankTableBody');
+  const tbody = document.getElementById('tableBody');
   if (!tbody) return;
   tbody.innerHTML = '';
   banks.forEach((b, i) => {
@@ -98,6 +98,7 @@ function renderBanks(banks) {
       <td>${b.cd_to_tier1 ?? '—'}</td>
       <td>${b.net_loans_assets ?? '—'}</td>
       <td>${b.noncurrent_assets_pct ?? '—'}</td>
+      <td>${b.total_risk_based_capital_ratio != null ? Number(b.total_risk_based_capital_ratio).toFixed(2) : '—'}</td>
     `;
     tbody.appendChild(tr);
   });
