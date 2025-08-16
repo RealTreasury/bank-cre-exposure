@@ -1,0 +1,31 @@
+# Development configuration for Bank CRE plugin
+
+api_settings:
+  ffiec:
+    timeout: 30000  # 30 seconds
+    retry_attempts: 3
+    backoff_factor: 1.5
+  fred:
+    timeout: 15000  # 15 seconds
+    default_limit: 100
+    max_limit: 1000
+
+display_settings:
+  default_bank_count: 100
+  max_bank_count: 500
+  refresh_interval: 300000  # 5 minutes
+  
+risk_thresholds:
+  cre_ratio:
+    high: 400  # > 400% CRE to Tier 1 Capital
+    medium: 300  # 300-400% CRE to Tier 1 Capital
+    low: 0     # < 300% CRE to Tier 1 Capital
+  
+  concentration:
+    geographic_max: 25    # Maximum 25% in single geography
+    property_type_max: 30 # Maximum 30% in single property type
+
+performance:
+  cache_duration: 300  # 5 minutes
+  function_timeout: 60  # 60 seconds
+  max_concurrent_requests: 10
