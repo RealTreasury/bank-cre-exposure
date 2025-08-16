@@ -1,2 +1,66 @@
+# WordPress Plugin Development
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/plugins/index.php
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Node.js (Netlify Functions)
 node_modules/
+npm-debug.log*
+.npm
+.node_repl_history
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.pytest_cache/
+.coverage
+
+# Development Data
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/backups/*
+!data/backups/.gitkeep
+
+# Build and Deployment
+dist/
+build/
+*.zip
+*.tar.gz
+
+# IDE and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# WordPress Plugin Packaging
+bank-cre-exposure-*.zip
+
+# Netlify
+.netlify/
+functions/
+
+# Documentation Builds
+docs/_build/

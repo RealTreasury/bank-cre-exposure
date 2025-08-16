@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Bank CRE Plugin Configuration Schema",
+  "properties": {
+    "netlify_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL for Netlify deployment"
+    },
+    "reporting_periods": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\d{4}-(03|06|09|12)-(31|30)$"
+      },
+      "description": "Available quarterly reporting periods"
+    },
+    "risk_thresholds": {
+      "type": "object",
+      "properties": {
+        "cre_ratio_high": {
+          "type": "number",
+          "minimum": 0,
+          "description": "High risk threshold for CRE ratio (%)"
+        },
+        "cre_ratio_medium": {
+          "type": "number", 
+          "minimum": 0,
+          "description": "Medium risk threshold for CRE ratio (%)"
+        }
+      }
+    }
+  },
+  "required": ["netlify_url"]
+}

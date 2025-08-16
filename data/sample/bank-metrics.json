@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "source": "FFIEC UBPR API",
+    "reporting_period": "2024-09-30",
+    "data_fields": [
+      "bank_name", "rssd_id", "total_assets", "cre_to_tier1", 
+      "cd_to_tier1", "net_loans_assets", "noncurrent_assets_pct"
+    ],
+    "risk_criteria": {
+      "high_risk": "CRE to Tier 1 > 400%",
+      "medium_risk": "CRE to Tier 1 300-400%",
+      "low_risk": "CRE to Tier 1 < 300%"
+    }
+  },
+  "sample_banks": [
+    {
+      "bank_name": "Sample Regional Bank",
+      "rssd_id": "123456",
+      "total_assets": 5000000,
+      "cre_to_tier1": 325.5,
+      "cd_to_tier1": 85.2,
+      "net_loans_assets": 72.3,
+      "noncurrent_assets_pct": 1.8
+    },
+    {
+      "bank_name": "Example Community Bank", 
+      "rssd_id": "789012",
+      "total_assets": 2500000,
+      "cre_to_tier1": 412.7,
+      "cd_to_tier1": 125.4,
+      "net_loans_assets": 68.9,
+      "noncurrent_assets_pct": 2.1
+    }
+  ]
+}
