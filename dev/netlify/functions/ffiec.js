@@ -214,6 +214,8 @@ exports.handler = async (event) => {
         ...r,
         ubpr_roe: u.ROE ?? null,
         ubpr_nim: u.NIM ?? null,
+        total_risk_based_capital_ratio:
+          u.RBC1 ?? u.TOTRBC ?? u.TOTAL_RISK_BASED_CAPITAL_RATIO ?? null,
       };
     });
     log({ stage: 'count_after_join', rows: filtered.length, ubpr_period_resolved: ubprPeriod });
@@ -227,6 +229,8 @@ exports.handler = async (event) => {
       rssd_id: bank.ID_Rssd || bank.RSSD_ID || bank.Id_Rssd || null,
       ubpr_roe: bank.ubpr_roe ?? null,
       ubpr_nim: bank.ubpr_nim ?? null,
+      total_risk_based_capital_ratio:
+        bank.total_risk_based_capital_ratio ?? null,
     }));
 
     return {

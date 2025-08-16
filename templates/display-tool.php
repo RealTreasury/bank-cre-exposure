@@ -72,6 +72,7 @@
                             <th onclick="sortTable(5)">Non-Curr Assets to Total Assets (%)</th>
                             <th onclick="sortTable(6)">C&D Loans to Tier 1 Cap + Allowance (%)</th>
                             <th onclick="sortTable(7)">CRE Loans to Tier 1 Cap + Allowance (%)</th>
+                            <th onclick="sortTable(8)">Total Risk-Based Capital Ratio (%)</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
