@@ -47,19 +47,29 @@ async function fetchPanel({ reportingPeriodEndDate = null, auth }) {
   </soap:Body>
 </soap:Envelope>`;
 
-  const response = await axios.post(
-    'https://cdr.ffiec.gov/public/PWS/WebServices/RetrievalService.asmx',
-    soapEnvelope,
-    {
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: 'http://cdr.ffiec.gov/public/services/RetrievePanelOfReporters',
-        Authorization: `Basic ${auth}`,
-      },
-      timeout: 30000,
-      httpsAgent,
-    }
-  );
+  let response;
+  try {
+    response = await axios.post(
+      'https://cdr.ffiec.gov/public/PWS/WebServices/RetrievalService.asmx',
+      soapEnvelope,
+      {
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          SOAPAction: 'http://cdr.ffiec.gov/public/services/RetrievePanelOfReporters',
+          Authorization: `Basic ${auth}`,
+        },
+        timeout: 30000,
+        httpsAgent,
+      }
+    );
+  } catch (err) {
+    const status = err.response?.status;
+    const statusText = err.response?.statusText;
+    const msg = status
+      ? `FFIEC request failed: ${status} ${statusText || ''}`.trim()
+      : err.message;
+    throw new Error(msg);
+  }
 
   const raw = response.data || '';
   const parsed = await parseStringPromise(raw, { explicitArray: false });
