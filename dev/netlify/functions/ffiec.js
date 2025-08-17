@@ -1,6 +1,15 @@
 // /netlify/functions/ffiec.js
 const axios = require('axios');
 
+// FFIEC authentication
+const username = process.env.FFIEC_USERNAME;
+const token = process.env.FFIEC_TOKEN;
+const authHeaders = {};
+if (username && token) {
+  const auth = Buffer.from(`${username}:${token}`).toString('base64');
+  authHeaders.Authorization = `Basic ${auth}`;
+}
+
 const http = axios.create({
   baseURL: 'https://api.ffiec.gov',
   timeout: 15000,
@@ -8,6 +17,7 @@ const http = axios.create({
   headers: {
     Accept: 'application/json',
     'User-Agent': 'RealTreasury/1.0 (+https://realtreasury.com)',
+    ...authHeaders,
   },
   httpAgent: false,
   httpsAgent: false,
