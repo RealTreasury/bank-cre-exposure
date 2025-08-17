@@ -359,10 +359,15 @@ async function updateData() {
 
         let statusMessage = `✅ Data update successful (${recordCount} records)`;
         let statusType = 'success';
-        
+
         // Verify we got real data, not mock
         if (dataSource.includes('real_data')) {
             statusMessage = `✅ Successfully fetched ${recordCount} real bank records`;
+        } else if (dataSource === 'sample_data') {
+            statusType = 'warning';
+            const meta = data._meta || {};
+            const errorInfo = meta.error ? `, error: ${meta.error}` : '';
+            statusMessage = `⚠️ Using sample data (${recordCount} records${errorInfo})`;
         } else {
             statusType = 'warning';
             statusMessage = `⚠️ Data retrieved but source unclear (${recordCount} records, source: ${dataSource})`;
