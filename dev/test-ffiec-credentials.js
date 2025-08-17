@@ -22,10 +22,23 @@ async function testFFIECCredentials() {
   const authHeader = Buffer.from(`${username}:${token}`).toString('base64');
 
   try {
+    // Fetch available UBPR periods to avoid unreleased dates
+    const periodsRes = await axios.get('https://api.ffiec.gov/public/v2/ubpr/periods', {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        Accept: 'application/json',
+      },
+    });
+    const available = Array.isArray(periodsRes.data?.periods) ? periodsRes.data.periods : [];
+    // Sort periods from newest to oldest and select a released one
+    const sorted = [...available].sort((a, b) => new Date(b) - new Date(a));
+    const chosen = sorted.length > 1 ? sorted[1] : sorted[0];
+    const repdte = chosen ? chosen.replace(/-/g, '') : undefined;
+
     const resp = await axios.get('https://api.ffiec.gov/public/v2/ubpr/financials', {
       params: {
         limit: 1,
-        filters: 'REPDTE:20240930',
+        filters: repdte ? `REPDTE:${repdte}` : undefined,
         format: 'json',
       },
       headers: {

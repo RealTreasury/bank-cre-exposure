@@ -40,21 +40,23 @@ function applyFilter(list, name, predicate) {
 async function resolveReportingPeriod(params = {}, fetchPeriods) {
   const requested = params.reporting_period;
   const { periods = [] } = (await fetchPeriods()) || {};
-  if (!periods.length) return requested;
-  if (!requested) return periods[0];
+  // Sort periods from newest to oldest based on actual date values
+  const sorted = [...periods].sort((a, b) => new Date(b) - new Date(a));
+  if (!sorted.length) return requested;
+  if (!requested) return sorted[0];
 
   // If the requested period is listed first it likely hasn't been released yet.
-  if (periods[0] === requested) {
-    return periods[1] || periods[0];
+  if (sorted[0] === requested) {
+    return sorted[1] || sorted[0];
   }
 
-  if (periods.includes(requested)) {
+  if (sorted.includes(requested)) {
     return requested;
   }
 
   // Fallback to the latest period earlier than the request.
-  const prior = periods.find((p) => p < requested);
-  return prior || periods[0];
+  const prior = sorted.find((p) => new Date(p) < new Date(requested));
+  return prior || sorted[0];
 }
 
 async function withRetry(fn, { tries = 3, baseMs = 600 } = {}) {
