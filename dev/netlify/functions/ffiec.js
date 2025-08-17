@@ -1,5 +1,6 @@
 // /netlify/functions/ffiec.js
 const axios = require('axios');
+const toYYYYMMDD = (iso) => (iso ? iso.replace(/-/g, '') : iso);
 
 // FFIEC authentication
 // Official requirement: Basic Auth with username + SECURITY TOKEN (token is used as the "password").
@@ -98,6 +99,15 @@ function cleanParams(params) {
 
 async function fetchPanel({ endpoint, params }) {
   const safeParams = cleanParams(params);
+  // Force JSON responses for public v2 endpoints
+  if (endpoint.startsWith('/public/v2') && !('format' in safeParams)) {
+    safeParams.format = 'json';
+  }
+  // Map top -> limit for public endpoints
+  if ('top' in safeParams && !('limit' in safeParams)) {
+    safeParams.limit = safeParams.top;
+    delete safeParams.top;
+  }
   console.log('FFIEC request', { endpoint, params: safeParams });
 
   return await withRetry(async () => {
@@ -118,21 +128,6 @@ async function fetchPanel({ endpoint, params }) {
   });
 }
 
-function toIsoDate(d) {
-  if (!d) return undefined;
-  // Accept already-ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-  // Try to coerce common formats; if fail, return undefined to omit
-  const maybe = new Date(d);
-  if (!isNaN(maybe)) {
-    const y = maybe.getUTCFullYear();
-    const m = String(maybe.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(maybe.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-  return undefined;
-}
-
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -151,11 +146,9 @@ exports.handler = async (event) => {
     const rssd = q.rssd?.trim();
 
     // Handle request for available reporting periods
-    if (q.list_periods) {
-      const { periods = [] } = await fetchPanel({
-        endpoint: '/public/v2/ubpr/periods',
-        params: {},
-      }) || {};
+    if (q.list_periods === 'true') {
+      const data = await fetchPanel({ endpoint: '/public/v2/ubpr/periods', params: {} });
+      const periods = Array.isArray(data?.periods) ? data.periods : [];
       return {
         statusCode: 200,
         headers,
@@ -185,17 +178,19 @@ exports.handler = async (event) => {
     }
 
     // Otherwise fetch UBPR financial data for a reporting period
-    const period = await resolveReportingPeriod(q, async () => (
-      fetchPanel({ endpoint: '/public/v2/ubpr/periods', params: {} })
-    ));
-    const limit = parseInt(q.top, 10) || 100;
+    const reportingPeriod = await resolveReportingPeriod(
+      { reporting_period: q.reporting_period },
+      async () => fetchPanel({ endpoint: '/public/v2/ubpr/periods', params: {} })
+    );
+    const top = Math.min(parseInt(q.top || '50', 10), 100);
+    const params = {
+      limit: top,
+      filters: `REPDTE:${toYYYYMMDD(reportingPeriod)}`,
+    };
+    console.log('Calling UBPR financials', { params });
     const ubpr = await fetchPanel({
       endpoint: '/public/v2/ubpr/financials',
-      params: {
-        filters: period ? `REPDTE:${period.replace(/-/g, '')}` : undefined,
-        limit,
-        format: 'json',
-      },
+      params,
     });
 
     const rows = Array.isArray(ubpr?.data) ? ubpr.data : asList(ubpr);
@@ -212,22 +207,27 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ data, _meta: { reportingPeriod: period } }),
+      body: JSON.stringify({
+        data,
+        _meta: {
+          reportingPeriod,
+          source: 'real_data',
+          timestamp: new Date().toISOString(),
+        },
+      }),
     };
   } catch (err) {
     const status = err.response?.status || 500;
-    let mapped = status >= 500 ? 502 : status;
-    let hint = 'Check parameter names and value formats (IDs, REPORT_DATE as YYYY-MM-DD).';
+    const text = err.response?.data || err.message;
+    let hint = 'Check parameter names and value formats. Ensure REPDTE is a real released quarter.';
     if (status === 401 || status === 403) {
-      mapped = status;
-      hint =
-        'Authentication failed. Ensure FFIEC_USERNAME and FFIEC_TOKEN are set correctly (token is used as the Basic Auth password).';
+      hint = 'Auth failed (only needed for legacy PWS). Public UBPR v2 endpoints typically do not require Basic auth.';
     } else if (status >= 500) {
-      hint =
-        'Likely a transient upstream error or unsupported parameter combination. Try fewer params or a recent date.';
+      hint = 'Upstream FFIEC service error or unsupported param combo. Try a smaller limit or an earlier period.';
     }
+    console.error('UBPR error', { status, text });
     return {
-      statusCode: mapped,
+      statusCode: status >= 500 ? 502 : status,
       headers,
       body: JSON.stringify({
         message: 'FFIEC API request failed',
