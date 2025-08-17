@@ -1,21 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveReportingPeriod, asList, applyFilter } = require('../dev/netlify/functions/ffiec.js');
+const { toYYYYMMDD, cleanParams } = require('../dev/netlify/functions/ffiec.js');
 
-test('coerces unreleased quarter to latest released', async () => {
-  const period = await resolveReportingPeriod(
-    { reporting_period: '2025-06-30' },
-    async () => ({ periods: ['2025-06-30', '2025-03-31'] })
-  );
-  assert.equal(period, '2025-03-31');
+test('toYYYYMMDD converts ISO dates to compact form', () => {
+  assert.equal(toYYYYMMDD('2024-09-30'), '20240930');
+  assert.equal(toYYYYMMDD(undefined), undefined);
 });
 
-test('asList wraps non-arrays', () => {
-  assert.deepEqual(asList(5), [5]);
-  assert.deepEqual(asList([1, 2]), [1, 2]);
-  assert.deepEqual(asList(null), []);
-});
-
-test('applyFilter throws when filter removes all', () => {
-  assert.throws(() => applyFilter([1], 'zero', () => false), /FILTER_ZERO\(zero\)/);
+test('cleanParams removes undefined, null, and empty strings', () => {
+  const params = { a: 1, b: null, c: undefined, d: '', e: 0 };
+  assert.deepEqual(cleanParams(params), { a: 1, e: 0 });
 });
