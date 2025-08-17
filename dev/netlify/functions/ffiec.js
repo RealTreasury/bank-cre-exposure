@@ -2,16 +2,50 @@
 const axios = require('axios');
 
 const http = axios.create({
-  baseURL: 'https://api.ffiec.gov', // TODO: adjust if your FFIEC base differs
+  baseURL: 'https://api.ffiec.gov',
   timeout: 15000,
   validateStatus: (s) => s >= 200 && s < 300,
   headers: {
-    'Accept': 'application/json',
+    Accept: 'application/json',
     'User-Agent': 'RealTreasury/1.0 (+https://realtreasury.com)',
   },
   httpAgent: false,
   httpsAgent: false,
 });
+
+// ----- utility helpers used by both the handler and tests -----
+function asList(value) {
+  if (Array.isArray(value)) return value;
+  return value === undefined || value === null ? [] : [value];
+}
+
+function applyFilter(list, name, predicate) {
+  const filtered = list.filter(predicate);
+  if (!filtered.length) {
+    throw new Error(`FILTER_ZERO(${name})`);
+  }
+  return filtered;
+}
+
+async function resolveReportingPeriod(params = {}, fetchPeriods) {
+  const requested = params.reporting_period;
+  const { periods = [] } = (await fetchPeriods()) || {};
+  if (!periods.length) return requested;
+  if (!requested) return periods[0];
+
+  // If the requested period is listed first it likely hasn't been released yet.
+  if (periods[0] === requested) {
+    return periods[1] || periods[0];
+  }
+
+  if (periods.includes(requested)) {
+    return requested;
+  }
+
+  // Fallback to the latest period earlier than the request.
+  const prior = periods.find((p) => p < requested);
+  return prior || periods[0];
+}
 
 async function withRetry(fn, { tries = 3, baseMs = 600 } = {}) {
   let err;
@@ -73,33 +107,40 @@ function toIsoDate(d) {
 }
 
 exports.handler = async (event) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
+  }
+
   try {
     const q = event.queryStringParameters || {};
     const cert = q.cert?.trim();
     const rssd = q.rssd?.trim();
-    const reportDate = toIsoDate(q.reportDate);
 
     // Choose ONE identifier unless your endpoint supports both.
     const useRssd = rssd || undefined;
     const useCert = !useRssd ? cert : undefined;
 
-    // TODO: Set the correct endpoint path for your data set, e.g.:
-    // '/cdr/CallReport/v1/data' or '/cdr/CallSchedule/RCONA123/v1/data'
-    const endpoint = '/<REPLACE-WITH-FFIEC-ROUTE>';
+    // Use the public institutions search endpoint which requires no auth.
+    const endpoint = '/public/v2/institutions/search';
 
     const data = await fetchPanel({
       endpoint,
       params: {
         ...(useCert ? { CERT: useCert } : {}),
         ...(useRssd ? { ID_RSSD: useRssd } : {}),
-        ...(reportDate ? { REPORT_DATE: reportDate } : {}),
-        // Add other allowed params here exactly as the FFIEC API expects
       },
     });
 
     return {
       statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data),
     };
   } catch (err) {
@@ -107,7 +148,7 @@ exports.handler = async (event) => {
     const mapped = status >= 500 ? 502 : status;
     return {
       statusCode: mapped,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         message: 'FFIEC API request failed',
         status,
@@ -118,6 +159,11 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// Expose helpers for unit tests
+exports.resolveReportingPeriod = resolveReportingPeriod;
+exports.asList = asList;
+exports.applyFilter = applyFilter;
 
 /*
 Debug notes:
