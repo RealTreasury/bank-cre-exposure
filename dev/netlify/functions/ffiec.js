@@ -120,11 +120,25 @@ exports.handler = async (event) => {
 
   // Health check
   if (params.test === 'true') {
+    const env = { FFIEC_USERNAME: !!username, FFIEC_TOKEN: !!token };
+    const missing = Object.keys(env).filter((k) => !env[k]);
+    if (missing.length > 0) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          status: 'CREDENTIALS_MISSING',
+          env,
+          missing,
+        }),
+      };
+    }
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        status: username && token ? 'CREDENTIALS_AVAILABLE' : 'MISSING_CREDENTIALS',
+        status: 'CREDENTIALS_AVAILABLE',
+        env,
       }),
     };
   }
