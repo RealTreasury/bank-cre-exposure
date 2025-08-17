@@ -22,19 +22,33 @@ async function testFFIECCredentials() {
   const authHeader = Buffer.from(`${username}:${token}`).toString('base64');
 
   try {
-    // Fetch available UBPR periods to avoid unreleased dates
+    // Step 1: auth check against /periods
     const periodsRes = await axios.get('https://api.ffiec.gov/public/v2/ubpr/periods', {
       headers: {
         Authorization: `Basic ${authHeader}`,
         Accept: 'application/json',
       },
+      validateStatus: () => true,
     });
-    const available = Array.isArray(periodsRes.data?.periods) ? periodsRes.data.periods : [];
-    // Sort periods from newest to oldest and select a released one
-    const sorted = [...available].sort((a, b) => new Date(b) - new Date(a));
-    const chosen = sorted.length > 1 ? sorted[1] : sorted[0];
-    const repdte = chosen ? chosen.replace(/-/g, '') : undefined;
+    if (periodsRes.status === 401 || periodsRes.status === 403) {
+      console.log('❌ FFIEC API test failed:');
+      console.log('   Status: ' + periodsRes.status);
+      console.log('   Message: Authentication failed. Ensure FFIEC_USERNAME and FFIEC_TOKEN are set correctly.');
+      process.exit(1);
+    }
+    if (periodsRes.status < 200 || periodsRes.status >= 300) {
+      console.log('❌ FFIEC API test failed:');
+      console.log('   Status: ' + periodsRes.status);
+      console.log('   Message: Unexpected response from /ubpr/periods.');
+      process.exit(1);
+    }
 
+    const periods = Array.isArray(periodsRes.data?.periods) ? periodsRes.data.periods : [];
+    const sorted = [...periods].sort((a, b) => new Date(b) - new Date(a));
+    const period = sorted.length > 1 ? sorted[1] : sorted[0]; // avoid unreleased newest
+    const repdte = period ? period.replace(/-/g, '') : undefined;
+
+    // Step 2: minimal data call
     const resp = await axios.get('https://api.ffiec.gov/public/v2/ubpr/financials', {
       params: {
         limit: 1,
