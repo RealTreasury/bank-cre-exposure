@@ -2,13 +2,28 @@
 const axios = require('axios');
 
 // FFIEC authentication
-const username = process.env.FFIEC_USERNAME;
-const token = process.env.FFIEC_TOKEN;
-const authHeaders = {};
-if (username && token) {
-  const auth = Buffer.from(`${username}:${token}`).toString('base64');
-  authHeaders.Authorization = `Basic ${auth}`;
+// Official requirement: Basic Auth with username + SECURITY TOKEN (token is used as the "password").
+// Primary env vars: FFIEC_USERNAME / FFIEC_TOKEN
+// Fallbacks for local scripts: PWS_USERNAME / PWS_TOKEN
+const username =
+  process.env.FFIEC_USERNAME ||
+  process.env.PWS_USERNAME ||
+  '';
+const token =
+  process.env.FFIEC_TOKEN ||
+  process.env.PWS_TOKEN ||
+  // last-resort compatibility: allow FFIEC_PASSWORD if someone mis-labeled the token
+  process.env.FFIEC_PASSWORD ||
+  '';
+
+function buildAuthHeader(u, t) {
+  if (!u || !t) return null;
+  const auth = Buffer.from(`${u}:${t}`).toString('base64');
+  return `Basic ${auth}`;
 }
+
+const authHeader = buildAuthHeader(username, token);
+const authHeaders = authHeader ? { Authorization: authHeader } : {};
 
 const http = axios.create({
   baseURL: 'https://api.ffiec.gov',
@@ -201,16 +216,23 @@ exports.handler = async (event) => {
     };
   } catch (err) {
     const status = err.response?.status || 500;
-    const mapped = status >= 500 ? 502 : status;
+    let mapped = status >= 500 ? 502 : status;
+    let hint = 'Check parameter names and value formats (IDs, REPORT_DATE as YYYY-MM-DD).';
+    if (status === 401 || status === 403) {
+      mapped = status;
+      hint =
+        'Authentication failed. Ensure FFIEC_USERNAME and FFIEC_TOKEN are set correctly (token is used as the Basic Auth password).';
+    } else if (status >= 500) {
+      hint =
+        'Likely a transient upstream error or unsupported parameter combination. Try fewer params or a recent date.';
+    }
     return {
       statusCode: mapped,
       headers,
       body: JSON.stringify({
         message: 'FFIEC API request failed',
         status,
-        hint: status >= 500
-          ? 'Likely a transient upstream error or unsupported parameter combination. Try fewer params or a recent date.'
-          : 'Check parameter names and value formats (IDs, REPORT_DATE as YYYY-MM-DD).',
+        hint,
       }),
     };
   }
