@@ -148,10 +148,7 @@ async function testNetlify() {
         const netlifyUrl = getNetlifyUrl();
         console.log('Testing Netlify URL:', netlifyUrl);
 
-        // Quick health check to populate reporting periods
-        await populateReportingPeriodDropdown();
-
-        // Test basic connectivity first
+        // Test basic connectivity
         const healthUrl = netlifyUrl + '/.netlify/functions/ffiec?test=true';
         console.log('Health check URL:', healthUrl);
         
@@ -161,11 +158,10 @@ async function testNetlify() {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            signal: AbortSignal.timeout(15000)
+            signal: AbortSignal.timeout(20000)
         });
         
         console.log('Response status:', response.status);
-        console.log('Response headers:', Object.fromEntries(response.headers));
         
         const text = await response.text();
         console.log('Raw response:', text);
@@ -187,17 +183,11 @@ async function testNetlify() {
         let resultMessage = 'Netlify connection test passed:\n' + JSON.stringify(data, null, 2);
         let statusType = 'success';
         
-        if (data.status === 'CREDENTIALS_MISSING') {
-            statusMessage = '⚠️ Netlify works but FFIEC credentials missing';
+        if (data.status === 'API_ERROR') {
+            statusMessage = '⚠️ Netlify works but FFIEC API is unreachable';
             statusType = 'warning';
-            resultMessage += '\n\n⚠️ Missing environment variables in Netlify:\n';
-            if (data.missing) {
-                data.missing.forEach(variable => {
-                    resultMessage += `• ${variable}\n`;
-                });
-            }
-        } else if (data.status === 'CREDENTIALS_AVAILABLE') {
-            statusMessage = '✅ Netlify connection and credentials configured';
+        } else if (data.status === 'HEALTHY') {
+            statusMessage = '✅ Netlify and FFIEC API connection successful';
             statusType = 'success';
         }
 
@@ -206,26 +196,8 @@ async function testNetlify() {
         
     } catch (error) {
         console.error('Netlify test error:', error);
-        
-        let errorMessage = 'Netlify connection failed: ' + error.message;
-        let suggestions = [];
-        
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            suggestions.push('Check if the Netlify URL is correct');
-            suggestions.push('Verify the Netlify site is deployed and accessible');
-            suggestions.push('Check for CORS issues');
-        } else if (error.message.includes('timeout')) {
-            suggestions.push('Netlify function may be taking too long to respond');
-            suggestions.push('Check Netlify function logs for errors');
-        } else if (error.message.includes('404')) {
-            suggestions.push('Netlify function may not be deployed');
-            suggestions.push('Check that /functions/ffiec exists in your Netlify deployment');
-        }
-        
-        const fullMessage = errorMessage + (suggestions.length > 0 ? '\n\nSuggestions:\n• ' + suggestions.join('\n• ') : '');
-        
-        showStatus('❌ ' + errorMessage, false, 'error');
-        showResult('Error details:\n' + fullMessage);
+        showStatus('❌ ' + error.message, false, 'error');
+        showResult('Error details:\n' + error.message);
     }
 }
 
