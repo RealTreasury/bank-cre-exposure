@@ -1,5 +1,9 @@
 // /netlify/functions/ffiec.js
 const axios = require('axios');
+const path = require('path');
+// Bundled sample data used as a fallback when the live API is unavailable.
+// The sample file lives at ../../data/sample/bank-metrics.json relative to this file.
+const sampleData = require('../../../data/sample/bank-metrics.json');
 
 // FFIEC authentication
 // Official requirement: Basic Auth with username + SECURITY TOKEN (token is used as the "password").
@@ -98,6 +102,10 @@ function cleanParams(params) {
 
 async function fetchPanel({ endpoint, params }) {
   const safeParams = cleanParams(params);
+  // Always request JSON format for public v2 endpoints if not explicitly set.
+  if (/^\/public\/v2/.test(endpoint) && !('format' in safeParams)) {
+    safeParams.format = 'json';
+  }
   console.log('FFIEC request', { endpoint, params: safeParams });
 
   return await withRetry(async () => {
@@ -216,18 +224,30 @@ exports.handler = async (event) => {
     };
   } catch (err) {
     const status = err.response?.status || 500;
-    let mapped = status >= 500 ? 502 : status;
+    // On 5xx errors, fall back to the bundled sample dataset.  This allows
+    // your plugin to function even when the remote FFIEC API is down.
+    if (status >= 500) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          data: sampleData.sample_banks,
+          _meta: {
+            reportingPeriod: sampleData.metadata?.reporting_period,
+            source: 'mock_data',
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      };
+    }
+    // For 4xx and other errors, return a helpful message.
     let hint = 'Check parameter names and value formats (IDs, REPORT_DATE as YYYY-MM-DD).';
     if (status === 401 || status === 403) {
-      mapped = status;
       hint =
         'Authentication failed. Ensure FFIEC_USERNAME and FFIEC_TOKEN are set correctly (token is used as the Basic Auth password).';
-    } else if (status >= 500) {
-      hint =
-        'Likely a transient upstream error or unsupported parameter combination. Try fewer params or a recent date.';
     }
     return {
-      statusCode: mapped,
+      statusCode: status,
       headers,
       body: JSON.stringify({
         message: 'FFIEC API request failed',

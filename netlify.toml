@@ -16,6 +16,12 @@
   # relative to the base directory.
   functions = "netlify/functions"
 
+[functions]
+  # Ensure the sample data is packaged with the functions
+  included_files = ["../data/sample/bank-metrics.json"]
+  # Increase the timeout for all functions to handle slow API calls (default is 10 seconds)
+  timeout = 26
+
 # Redirect legacy API paths to Netlify functions
 [[redirects]]
   from = "/api/fred"
