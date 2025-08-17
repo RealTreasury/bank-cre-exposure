@@ -123,25 +123,69 @@ exports.handler = async (event) => {
     const cert = q.cert?.trim();
     const rssd = q.rssd?.trim();
 
-    // Choose ONE identifier unless your endpoint supports both.
+    // Handle request for available reporting periods
+    if (q.list_periods) {
+      const { periods = [] } = await fetchPanel({
+        endpoint: '/public/v2/ubpr/periods',
+        params: {},
+      }) || {};
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ periods }),
+      };
+    }
+
+    // Choose ONE identifier unless the endpoint supports both.
     const useRssd = rssd || undefined;
     const useCert = !useRssd ? cert : undefined;
 
-    // Use the public institutions search endpoint which requires no auth.
-    const endpoint = '/public/v2/institutions/search';
+    // When an ID is provided, call the institutions search endpoint
+    if (useCert || useRssd) {
+      const endpoint = '/public/v2/institutions/search';
+      const data = await fetchPanel({
+        endpoint,
+        params: {
+          ...(useCert ? { CERT: useCert } : {}),
+          ...(useRssd ? { ID_RSSD: useRssd } : {}),
+        },
+      });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(data),
+      };
+    }
 
-    const data = await fetchPanel({
-      endpoint,
+    // Otherwise fetch UBPR financial data for a reporting period
+    const period = await resolveReportingPeriod(q, async () => (
+      fetchPanel({ endpoint: '/public/v2/ubpr/periods', params: {} })
+    ));
+    const limit = parseInt(q.top, 10) || 100;
+    const ubpr = await fetchPanel({
+      endpoint: '/public/v2/ubpr/financials',
       params: {
-        ...(useCert ? { CERT: useCert } : {}),
-        ...(useRssd ? { ID_RSSD: useRssd } : {}),
+        filters: period ? `REPDTE:${period.replace(/-/g, '')}` : undefined,
+        limit,
+        format: 'json',
       },
     });
+
+    const rows = Array.isArray(ubpr?.data) ? ubpr.data : asList(ubpr);
+    const data = rows.map((r) => ({
+      bank_name: r.NAME || r.BankName || r.Name || null,
+      rssd_id: r.ID_RSSD || r.IDRSSD || r.RSSD_ID || r.RSSD || null,
+      cre_to_tier1: r.CRETOTIER1 ?? null,
+      cd_to_tier1: r.CDTOTIER1 ?? null,
+      net_loans_assets: r.NLLR ?? null,
+      noncurrent_assets_pct: r.NONCURRASSETS ?? null,
+      total_risk_based_capital_ratio: r.TOTRBC || r.TOTRBCAP || r.TOTRISKBASEDCAP || r.TOTRBCAP || r.TOTRBC_RATIO || null,
+    }));
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify(data),
+      body: JSON.stringify({ data, _meta: { reportingPeriod: period } }),
     };
   } catch (err) {
     const status = err.response?.status || 500;
