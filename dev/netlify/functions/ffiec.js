@@ -3,6 +3,14 @@ dns.setDefaultResultOrder('ipv4first');
 
 const axios = require('axios');
 const { parseStringPromise } = require('xml2js');
+const https = require('https');
+const crypto = require('crypto');
+
+// Use a legacy-compatible TLS agent for FFIEC endpoints
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+});
 
 const assert = (cond, msg) => {
   if (!cond) throw new Error(msg);
@@ -48,6 +56,7 @@ async function fetchPanel({ period = null, page = 1, pageSize = 500, auth }) {
         Authorization: `Basic ${auth}`,
       },
       timeout: 30000,
+      httpsAgent,
     }
   );
 
@@ -195,6 +204,7 @@ exports.handler = async (event) => {
         const resp = await axios.get('https://api.ffiec.gov/public/v2/ubpr/financials', {
           params: { filters: `REPDTE:${ubprPeriod}`, limit: 1000, format: 'json' },
           timeout: 30000,
+          httpsAgent,
         });
         ubprRows = asList(resp.data?.data || resp.data || []);
       } catch (err) {
