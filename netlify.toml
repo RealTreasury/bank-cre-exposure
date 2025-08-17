@@ -16,6 +16,9 @@
   # relative to the base directory.
   functions = "netlify/functions"
 
+[functions]
+  timeout = 26
+
 # Redirect legacy API paths to Netlify functions
 [[redirects]]
   from = "/api/fred"
