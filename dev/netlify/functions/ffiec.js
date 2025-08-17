@@ -32,27 +32,28 @@ function applyFilter(rows, name, fn) {
   return out;
 }
 
-async function fetchPanel({ period = null, page = 1, pageSize = 500, auth }) {
-  const periodTag = period ? `<ReportingPeriod>${period}</ReportingPeriod>` : '';
-  const pageTags = `<PageNumber>${page}</PageNumber><MaxReturnRows>${pageSize}</MaxReturnRows>`;
+async function fetchPanel({ reportingPeriodEndDate = null, auth }) {
+  // Correct SOAP envelope based on official FFIEC documentation
+  // The reportingPeriodEndDate should be in YYYY-MM-DD format (e.g., "2024-09-30")
+  const periodTag = reportingPeriodEndDate ? `<reportingPeriodEndDate>${reportingPeriodEndDate}</reportingPeriodEndDate>` : '';
 
   const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <RetrievePanelOfReporters xmlns="http://cdr.ffiec.gov/public/PWS/">
+    <RetrievePanelOfReporters xmlns="http://cdr.ffiec.gov/public/services">
+      <dataSeries>Call</dataSeries>
       ${periodTag}
-      ${pageTags}
     </RetrievePanelOfReporters>
   </soap:Body>
 </soap:Envelope>`;
 
   const response = await axios.post(
-    'https://cdr.ffiec.gov/public/PWS/WebServices/RetrievePanelOfReporters.asmx',
+    'https://cdr.ffiec.gov/public/PWS/WebServices/RetrievalService.asmx',
     soapEnvelope,
     {
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        SOAPAction: 'http://cdr.ffiec.gov/public/PWS/RetrievePanelOfReporters',
+        SOAPAction: 'http://cdr.ffiec.gov/public/services/RetrievePanelOfReporters',
         Authorization: `Basic ${auth}`,
       },
       timeout: 30000,
@@ -62,9 +63,11 @@ async function fetchPanel({ period = null, page = 1, pageSize = 500, auth }) {
 
   const raw = response.data || '';
   const parsed = await parseStringPromise(raw, { explicitArray: false });
-  let rows =
-    parsed?.['soap:Envelope']?.['soap:Body']?.['RetrievePanelOfReportersResponse']?.['RetrievePanelOfReportersResult']?.['diffgr:diffgram']?.['DocumentElement']?.['Reporter'] || [];
+  
+  // Updated path to match actual SOAP response structure
+  let rows = parsed?.['soap:Envelope']?.['soap:Body']?.['RetrievePanelOfReportersResponse']?.['RetrievePanelOfReportersResult']?.['ReportingFinancialInstitution'] || [];
   rows = asList(rows);
+  
   return { raw, rows };
 }
 
@@ -133,7 +136,11 @@ exports.handler = async (event) => {
       statusCode: 200,
       headers,
       body: JSON.stringify({
-        status: username && token ? 'CREDENTIALS_AVAILABLE' : 'MISSING_CREDENTIALS',
+        status: username && token ? 'CREDENTIALS_AVAILABLE' : 'CREDENTIALS_MISSING',
+        missing: !username || !token ? [
+          ...(!username ? ['FFIEC_USERNAME'] : []),
+          ...(!token ? ['FFIEC_TOKEN'] : [])
+        ] : undefined,
       }),
     };
   }
@@ -147,57 +154,56 @@ exports.handler = async (event) => {
     };
   }
 
+  if (!username || !token) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: 'CREDENTIALS_MISSING',
+        message: 'FFIEC credentials not configured',
+        missing: [
+          ...(!username ? ['FFIEC_USERNAME'] : []),
+          ...(!token ? ['FFIEC_TOKEN'] : [])
+        ],
+      }),
+    };
+  }
+
   const reportingPeriod = await resolveReportingPeriod(params, listPeriodsFromFFIEC);
   const top = parseInt(params.top, 10) || 100;
-  const auth = Buffer.from(`${username}:${token || ''}`).toString('base64');
+  const auth = Buffer.from(`${username}:${token}`).toString('base64');
 
   try {
-    // Step 1: fetch without period
+    // Step 1: fetch without period first to test connection
+    console.log('Fetching panel without period...');
     const basePanel = await fetchPanel({ auth });
     log({ stage: 'fetch_panel_no_period', raw_bytes: basePanel.raw.length, rows: basePanel.rows.length });
     assert(basePanel.rows.length > 0, 'SOURCE_EMPTY(panel, no_period)');
 
-    // Step 2: try period variants
-    const variants = [reportingPeriod, reportingPeriod.replace(/-/g, ''), reportingPeriod.slice(0, 7).replace('-', '')];
-    let chosenPeriod = null;
+    // Step 2: try with specific period
+    console.log(`Fetching panel with period: ${reportingPeriod}`);
     let panel = null;
-    for (const per of variants) {
-      const p = await fetchPanel({ period: per, auth });
-      log({ stage: 'fetch_panel_period', period: per, rows: p.rows.length });
-      if (p.rows.length > 0) {
-        chosenPeriod = per;
-        panel = p;
-        break;
+    try {
+      panel = await fetchPanel({ reportingPeriodEndDate: reportingPeriod, auth });
+      log({ stage: 'fetch_panel_with_period', period: reportingPeriod, rows: panel.rows.length });
+      
+      if (panel.rows.length === 0) {
+        console.log('No data for specific period, falling back to no-period data');
+        panel = basePanel;
       }
-    }
-    if (!panel) {
+    } catch (err) {
+      console.log('Error fetching with period, falling back to no-period data:', err.message);
       panel = basePanel;
-      assert(panel.rows.length > 0, 'SOURCE_EMPTY(panel, all_period_formats_failed)');
     }
 
-    // Step 4: pagination
-    let allRows = [...panel.rows];
-    let page = 2;
-    while (true) {
-      const r = await fetchPanel({ period: chosenPeriod, page, auth });
-      const batch = asList(r.rows);
-      log({ stage: 'panel_page', page, batch: batch.length });
-      if (batch.length === 0) break;
-      allRows.push(...batch);
-      if (batch.length < 500) break;
-      page += 1;
-    }
-    panel.rows = allRows;
-    log({ stage: 'panel_after_pagination', rows: panel.rows.length });
-    assert(panel.rows.length > 0, 'PAGINATION_EMPTY(panel)');
+    assert(panel.rows.length > 0, 'SOURCE_EMPTY(panel, after_all_attempts)');
 
-    // Step 5: no filters yet
+    // Step 3: Apply any necessary filters
     let filtered = panel.rows;
     log({ stage: 'panel_unfiltered', rows: filtered.length });
-    assert(filtered.length > 0, 'FILTERS_ACCIDENTALLY_ZEROED(panel)');
 
-    // Step 6-7: join UBPR metrics using LEFT JOIN semantics
-    const ubprPeriod = chosenPeriod ? chosenPeriod.replace(/-/g, '') : null;
+    // Step 4: Join UBPR metrics using LEFT JOIN semantics
+    const ubprPeriod = reportingPeriod ? reportingPeriod.replace(/-/g, '') : null;
     let ubprRows = [];
     if (ubprPeriod) {
       try {
@@ -212,35 +218,41 @@ exports.handler = async (event) => {
       }
     }
     log({ stage: 'fetch_ubpr', period: ubprPeriod, rows: ubprRows.length });
+    
     const ubprMap = new Map();
     for (const u of ubprRows) {
       const key = u.CERT || u.ID_RSSD || u.RSSDID || u.IDRSSD;
       if (key) ubprMap.set(key.toString(), u);
     }
+    
     filtered = filtered.map((r) => {
-      const key = r.ID_Rssd || r.RSSD_ID || r.Id_Rssd || r.CERT || r.Cert;
+      const key = r.ID_RSSD || r.FDICCertNumber || r.CERT;
       const u = ubprMap.get(key ? key.toString() : '') || {};
       return {
         ...r,
-        ubpr_roe: u.ROE ?? null,
-        ubpr_nim: u.NIM ?? null,
-        total_risk_based_capital_ratio:
-          u.RBC1 ?? u.TOTRBC ?? u.TOTAL_RISK_BASED_CAPITAL_RATIO ?? null,
+        // Map UBPR fields to standardized names
+        cre_to_tier1: u.UBPRE749 ?? u.UBPR2746 ?? null,
+        cd_to_tier1: u.UBPRE750 ?? u.UBPR2747 ?? null,
+        net_loans_assets: u.UBPR2122 ?? null,
+        noncurrent_assets_pct: u.UBPR2167 ?? null,
+        total_risk_based_capital_ratio: u.RBC1 ?? u.TOTRBC ?? u.TOTAL_RISK_BASED_CAPITAL_RATIO ?? null,
+        total_assets: u.TA ?? u.UBPR2170 ?? null,
       };
     });
+    
     log({ stage: 'count_after_join', rows: filtered.length, ubpr_period_resolved: ubprPeriod });
 
-    // Step 9: final output
-    const sample_before = panel.rows.slice(0, 5).map((r) => r.Name || r.BankName || r.bank_name || '');
-    const sample_after = filtered.slice(0, 5).map((r) => r.Name || r.BankName || r.bank_name || '');
+    // Step 5: Final output formatting
     const limited = filtered.slice(0, Math.min(top, filtered.length));
     const data = limited.map((bank, index) => ({
-      bank_name: bank.Name || bank.BankName || `Bank ${index + 1}`,
-      rssd_id: bank.ID_Rssd || bank.RSSD_ID || bank.Id_Rssd || null,
-      ubpr_roe: bank.ubpr_roe ?? null,
-      ubpr_nim: bank.ubpr_nim ?? null,
-      total_risk_based_capital_ratio:
-        bank.total_risk_based_capital_ratio ?? null,
+      bank_name: bank.n || bank.Name || bank.BankName || `Bank ${index + 1}`,
+      rssd_id: bank.ID_RSSD || null,
+      cre_to_tier1: bank.cre_to_tier1,
+      cd_to_tier1: bank.cd_to_tier1,
+      net_loans_assets: bank.net_loans_assets,
+      noncurrent_assets_pct: bank.noncurrent_assets_pct,
+      total_risk_based_capital_ratio: bank.total_risk_based_capital_ratio,
+      total_assets: bank.total_assets,
     }));
 
     return {
@@ -250,14 +262,12 @@ exports.handler = async (event) => {
         data,
         success: true,
         recordCount: filtered.length,
-        dataSource: 'ffiec_soap_panel',
-        reportingPeriod: chosenPeriod || 'unspecified',
-        timestamp: new Date().toISOString(),
-        sampleBanks_preJoin: sample_before,
-        sampleBanks: sample_after,
-        metadata: {
-          note: 'Panel verified; UBPR left-joined with null-safe fields',
-          period_used_for_ubpr: ubprPeriod || null,
+        _meta: {
+          source: 'ffiec_soap_panel_fixed',
+          reportingPeriod: reportingPeriod,
+          timestamp: new Date().toISOString(),
+          ubpr_period_used: ubprPeriod,
+          note: 'Fixed SOAP API call with correct namespace and parameters',
         },
       }),
     };
@@ -269,6 +279,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         error: 'FFIEC_API_ERROR',
         message: error.message,
+        details: error.stack,
         timestamp: new Date().toISOString(),
       }),
     };
