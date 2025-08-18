@@ -1,8 +1,8 @@
-// FFIEC Netlify Function - Fixed Endpoints Version
+// FFIEC Netlify Function - Working Version
 const axios = require('axios');
 const xml2js = require('xml2js');
 
-// Correct FFIEC endpoints
+// Working FFIEC endpoints
 const FFIEC_PWS_BASE = 'https://cdr.ffiec.gov/public/pws/webservices/retrievalservice.asmx';
 const FFIEC_REST_API = 'https://cdr.ffiec.gov/public/rest';
 const DEFAULT_TIMEOUT = 25000;
@@ -27,7 +27,6 @@ class FFIECClient {
     return headers;
   }
 
-  // Test credentials using SOAP
   async testCredentials() {
     if (!this.hasCredentials()) {
       return { status: 'CREDENTIALS_MISSING' };
@@ -62,11 +61,9 @@ class FFIECClient {
     }
   }
 
-  // Get available reporting periods
   async getReportingPeriods() {
     try {
-      // Try the REST API first
-      const response = await axios.get(`${FFIEC_REST_API}/UBPR/search`, {
+      const response = await axios.get(`${FFIEC_REST_API}/institution/search`, {
         params: { 
           ACTIVE: '1',
           LIMIT: '1',
@@ -75,7 +72,6 @@ class FFIECClient {
         timeout: 10000,
       });
       
-      // If successful, generate periods based on current date
       return this.generateFallbackPeriods();
     } catch (error) {
       console.warn('Failed to test API connection:', error.message);
@@ -83,14 +79,12 @@ class FFIECClient {
     }
   }
 
-  // Get bank data using REST API
   async getBankData(reportingPeriod, limit = 100) {
     const headers = this.getHeaders();
     
     try {
       console.log(`Fetching bank data for period: ${reportingPeriod}`);
       
-      // Use the CDR REST API for institution search
       const response = await axios.get(`${FFIEC_REST_API}/institution/search`, {
         headers,
         params: {
@@ -104,7 +98,6 @@ class FFIECClient {
       const data = response.data || [];
       console.log(`Retrieved ${data.length} institutions from CDR`);
       
-      // Transform the data to match our expected format
       return data.map(bank => ({
         bank_name: bank.NAME || bank.INSTNAME || bank.BKNAME || `Bank ${bank.IDRSSD}`,
         rssd_id: bank.IDRSSD || bank.ID_RSSD || bank.CERT || null,
@@ -126,7 +119,6 @@ class FFIECClient {
     }
   }
 
-  // Health check function
   async healthCheck() {
     const results = {
       timestamp: new Date().toISOString(),
@@ -186,7 +178,6 @@ class FFIECClient {
       });
     }
 
-    // Determine overall status
     const passed = results.tests.filter(t => t.status === 'PASS').length;
     const total = results.tests.filter(t => t.status !== 'SKIP').length;
     
@@ -203,7 +194,6 @@ class FFIECClient {
     return results;
   }
 
-  // Utility functions
   parseNumber(value) {
     if (value === null || value === undefined || value === '') return null;
     const num = Number(value);
@@ -212,7 +202,7 @@ class FFIECClient {
 
   escapeXml(unsafe) {
     if (typeof unsafe !== 'string') return unsafe;
-    return unsafe.replace(/[<>&'"]/g, function (c) {
+    return unsafe.replace(/[<>&'\"]/g, function (c) {
       switch (c) {
         case '<': return '&lt;';
         case '>': return '&gt;';
@@ -252,7 +242,6 @@ class FFIECClient {
   }
 }
 
-// Main handler function
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -271,11 +260,9 @@ exports.handler = async (event) => {
   try {
     const client = new FFIECClient();
 
-    // Health check endpoint
     if (params.test === 'true') {
       const health = await client.healthCheck();
       
-      // Add environment info
       health.credentials = {
         hasUsername: !!process.env.FFIEC_USERNAME,
         hasToken: !!process.env.FFIEC_TOKEN,
@@ -289,7 +276,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // List periods endpoint
     if (params.list_periods === 'true') {
       const periods = await client.getReportingPeriods();
       return {
@@ -299,7 +285,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // Main data endpoint
     const reportingPeriod = client.validateReportingPeriod(params.reporting_period) || 
                            client.generateFallbackPeriods()[0];
     const limit = Math.min(parseInt(params.top, 10) || 100, 500);
@@ -317,7 +302,6 @@ exports.handler = async (event) => {
     } catch (error) {
       console.warn(`FFIEC CDR API failed: ${error.message}, using sample data`);
       
-      // Fallback to sample data
       data = [
         {
           bank_name: 'Sample Regional Bank',
@@ -382,5 +366,5 @@ exports.handler = async (event) => {
   }
 };
 
-// Export client for testing
 exports.FFIECClient = FFIECClient;
+
