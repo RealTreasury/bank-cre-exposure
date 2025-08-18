@@ -4,11 +4,6 @@
   publish = "public"
   functions = "netlify/functions"
 
-[functions]
-  # Global function settings
-  timeout = 30
-  memory = 1024
-
 [functions.ffiec]
   timeout = 30
   memory = 1024
