@@ -1,47 +1,21 @@
-# This file should be in the ROOT of your project repository.
-
 [build]
-  # Base directory: The directory to change to before starting the build.
-  # We will run the build from within the 'dev' folder.
   base = "dev"
-
-  # Build command: This command is run from within the base directory ('dev').
-  command = "npm install && mkdir -p public && echo '{\"title\": \"My Deployed Site\", \"name\": \"World\"}' > data.json && npx ejs ./test/template.ejs -f data.json -o ./public/index.html"
-
-  # Publish directory: The directory that contains the built site files.
-  # Since the base is 'dev', Netlify will look for 'dev/public'.
+  command = "npm install"
   publish = "public"
-
-  # Functions directory: Location of your serverless functions,
-  # relative to the base directory.
   functions = "netlify/functions"
 
 [functions.ffiec]
-  timeout = 26
+  timeout = 60
 
 [functions.fred]
-  timeout = 26
+  timeout = 30
 
-# Redirect legacy API paths to Netlify functions
-[[redirects]]
-  from = "/api/fred"
-  to = "/.netlify/functions/fred"
-  status = 200
-
-# This section adds the necessary CORS headers to your function responses.
 [[headers]]
-  # Apply these headers to all paths under /.netlify/functions/
   for = "/.netlify/functions/*"
   [headers.values]
-    # Allow requests from your WordPress staging site.
-    Access-Control-Allow-Origin = "https://staging-a1e3-aisbee08e5bdvaliantmaker.wpcomstaging.com"
-    
-    # ADDED: This header specifies which HTTP methods (e.g., GET) are allowed.
+    Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, OPTIONS"
-    
-    # ADDED: This header specifies which request headers are allowed.
     Access-Control-Allow-Headers = "Content-Type"
 
-# Optional: You can specify a Node.js version to prevent build issues.
 [build.environment]
   NODE_VERSION = "18"
