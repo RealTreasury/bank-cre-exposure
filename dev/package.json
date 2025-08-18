@@ -1,16 +1,20 @@
 {
   "name": "bank-cre-exposure",
   "version": "1.0.0",
-  "description": "This repository hosts the static HTML report summarizing commercial real estate exposures for September 2024.",
+  "description": "WordPress plugin with Netlify functions for FFIEC bank data",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test-ffiec-comprehensive.js",
     "test:ejs": "node -e \"console.log('EJS installed:', require('ejs').VERSION)\"",
-    "check-env": "node ../scripts/check-netlify-env.js"
+    "test:ffiec": "node test-ffiec-comprehensive.js",
+    "test:quick": "node quick-ffiec-diagnostic.js",
+    "check-env": "node ../scripts/check-netlify-env.js",
+    "deploy": "netlify deploy --prod",
+    "dev": "netlify dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["banking", "ffiec", "cre", "wordpress", "netlify"],
+  "author": "Real Treasury",
+  "license": "GPL-2.0",
   "type": "commonjs",
   "devDependencies": {
     "ejs": "^3.1.10"
@@ -18,5 +22,8 @@
   "dependencies": {
     "axios": "^1.11.0",
     "xml2js": "^0.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
