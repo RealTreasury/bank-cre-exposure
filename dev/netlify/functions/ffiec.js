@@ -1,43 +1,49 @@
-// /netlify/functions/ffiec.js
+// Netlify function for FFIEC UBPR data
 const axios = require('axios');
 
-// Helper to convert ISO date to YYYYMMDD format
-const toYYYYMMDD = (iso) => (iso ? iso.replace(/-/g, '') : iso);
+const UBPR_BASE = 'https://api.ffiec.gov/public/v2/ubpr';
 
-// Create axios instance for FFIEC CDR API
-const http = axios.create({
-  baseURL: 'https://cdr.ffiec.gov',
-  timeout: 25000,
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'User-Agent': 'BankCREExposure/1.0'
-  }
-});
-
-// Helper to clean parameters
-function cleanParams(params) {
-  return Object.fromEntries(
-    Object.entries(params || {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
-  );
+function getAuthConfig() {
+  const username = process.env.FFIEC_USERNAME;
+  const token = process.env.FFIEC_TOKEN;
+  if (!username || !token) return null;
+  return { auth: { username, password: token } };
 }
 
-// Fetch data from FFIEC CDR
-async function fetchFFIECData(endpoint, params = {}) {
-  const safeParams = cleanParams(params);
-  
-  console.log('FFIEC CDR request:', { endpoint, params: safeParams });
-  
+function latestReleasedQuarterEnd(today = new Date()) {
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth() + 1;
+  let yy = y, mm = 3, dd = 31;
+  if (m >= 10)      { mm = 6; dd = 30; }
+  else if (m >= 7)  { mm = 3; dd = 31; }
+  else if (m >= 4)  { mm = 3; dd = 31; }
+  else              { yy = y - 1; mm = 12; dd = 31; }
+  return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+function generatePeriodsFallback() {
+  const periods = [];
+  const today = new Date(latestReleasedQuarterEnd());
+  const quarters = ['12-31', '09-30', '06-30', '03-31'];
+  for (let y = today.getFullYear(); periods.length < 12; y--) {
+    for (const q of quarters) {
+      const iso = `${y}-${q}`;
+      if (new Date(iso) <= today) periods.push(iso);
+      if (periods.length >= 12) break;
+    }
+  }
+  return periods;
+}
+
+async function fetchUBPR(endpoint, params = {}) {
+  const auth = getAuthConfig();
+  if (!auth) throw new Error('Missing credentials');
+  const url = `${UBPR_BASE}${endpoint}`;
   try {
-    const response = await http.get(endpoint, { params: safeParams });
-    return response.data;
+    const res = await axios.get(url, { ...auth, params, timeout: 30000 });
+    return res.data;
   } catch (error) {
-    console.error('FFIEC CDR API error:', {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      message: error.message
-    });
+    console.error('UBPR API error:', error.message);
     throw error;
   }
 }
@@ -50,232 +56,156 @@ exports.handler = async (event) => {
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
   };
 
-  // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers, body: '' };
   }
 
   try {
-    const params = event.queryStringParameters || {};
-    
-    // Handle test/health check
-    if (params.test === 'true') {
-      try {
-        // Test with a simple institution lookup
-        const testData = await fetchFFIECData('/public/rest/institution/search', {
-          ACTIVE: 1,
-          LIMIT: 1,
-          FORMAT: 'JSON'
-        });
-        
+    const qs = event.queryStringParameters || {};
+    const auth = getAuthConfig();
+
+    if (qs.test === 'true') {
+      if (!auth) {
+        const missing = [];
+        if (!process.env.FFIEC_USERNAME) missing.push('FFIEC_USERNAME');
+        if (!process.env.FFIEC_TOKEN) missing.push('FFIEC_TOKEN');
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({
-            status: 'HEALTHY',
-            message: 'FFIEC CDR API connection successful',
-            timestamp: new Date().toISOString(),
-            test_response: !!testData
-          })
+          body: JSON.stringify({ status: 'CREDENTIALS_MISSING', missing }),
         };
-      } catch (error) {
+      }
+      try {
+        await fetchUBPR('/periods', { top: 1 });
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({
-            status: 'API_ERROR',
-            message: 'FFIEC CDR API unreachable',
-            error: error.message
-          })
+          body: JSON.stringify({ status: 'CREDENTIALS_AVAILABLE' }),
+        };
+      } catch (err) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ status: 'API_ERROR', message: err.message }),
         };
       }
     }
-    
-    // Handle request for available reporting periods
-    if (params.list_periods === 'true') {
-      // Generate standard quarterly periods (CDR doesn't have a periods endpoint)
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = today.getMonth() + 1;
-      
-      const periods = [];
-      for (let y = year; periods.length < 12; y--) {
-        const quarters = [
-          { date: '12-31', month: 12 },
-          { date: '09-30', month: 9 },
-          { date: '06-30', month: 6 },
-          { date: '03-31', month: 3 }
-        ];
-        
-        for (const q of quarters) {
-          const fullDate = `${y}-${q.date}`;
-          const periodDate = new Date(fullDate);
-          
-          // Only include periods that are at least 45 days old (data release lag)
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - 45);
-          
-          if (periodDate <= cutoffDate) {
-            periods.push(fullDate);
+
+    if (qs.list_periods === 'true') {
+      if (auth) {
+        try {
+          const data = await fetchUBPR('/periods', { format: 'json' });
+          const periods = Array.isArray(data?.data)
+            ? data.data.map(p => p.period_end_date).filter(Boolean)
+            : [];
+          if (periods.length) {
+            return { statusCode: 200, headers, body: JSON.stringify({ periods }) };
           }
-          if (periods.length >= 12) break;
+        } catch (err) {
+          console.warn('Period list fetch failed:', err.message);
         }
       }
-      
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods })
+        body: JSON.stringify({ periods: generatePeriodsFallback() }),
       };
     }
-    
-    // Main data fetch - get bank financial data
-    const reportingPeriod = params.reporting_period || '2024-09-30';
-    const limit = Math.min(parseInt(params.top || '50', 10), 100);
-    
+
+    const reportingPeriod = qs.reporting_period || latestReleasedQuarterEnd();
+    const top = parseInt(qs.top, 10) || 100;
+
     try {
-      // First, get a list of institutions with basic data
-      const institutionsData = await fetchFFIECData('/public/rest/institution/search', {
-        ACTIVE: 1,
-        LIMIT: limit,
-        FORMAT: 'JSON',
-        FIELDS: 'ID_RSSD,NM_LGL,CITY,STATE_ABBR_NM,TOTAL_ASSETS'
+      const resp = await fetchUBPR('/financials', {
+        period_end_date: reportingPeriod,
+        top,
+        format: 'json',
       });
-      
-      // Parse the response - it might be wrapped
-      let institutions = [];
-      if (Array.isArray(institutionsData)) {
-        institutions = institutionsData;
-      } else if (institutionsData.data && Array.isArray(institutionsData.data)) {
-        institutions = institutionsData.data;
-      } else if (institutionsData.institutions) {
-        institutions = institutionsData.institutions;
-      }
-      
-      // For each institution, we would normally fetch UBPR data
-      // But since we can't access api.ffiec.gov, we'll use the basic data
-      // and calculate some mock ratios for demonstration
-      
-      const processedData = institutions.slice(0, limit).map((inst, index) => {
-        // Extract assets value
-        let totalAssets = 0;
-        if (inst.TOTAL_ASSETS) {
-          totalAssets = parseInt(inst.TOTAL_ASSETS) || 0;
-        } else if (inst.total_assets) {
-          totalAssets = parseInt(inst.total_assets) || 0;
-        }
-        
-        // Generate realistic-looking ratios based on asset size
-        // Larger banks tend to have lower CRE ratios
-        const assetTier = totalAssets > 10000000 ? 'large' : 
-                         totalAssets > 1000000 ? 'medium' : 'small';
-        
-        const baseRatio = assetTier === 'large' ? 150 : 
-                         assetTier === 'medium' ? 250 : 350;
-        
-        // Add some variation
-        const variation = (Math.random() - 0.5) * 100;
-        const creRatio = Math.max(50, baseRatio + variation);
-        
-        return {
-          bank_name: inst.NM_LGL || inst.NAME || inst.name || 'Unknown Bank',
-          rssd_id: inst.ID_RSSD || inst.IDRSSD || inst.id_rssd || `${100000 + index}`,
-          total_assets: totalAssets,
-          cre_to_tier1: Number(creRatio.toFixed(2)),
-          cd_to_tier1: Number((creRatio * 0.3).toFixed(2)),
-          net_loans_assets: Number((65 + Math.random() * 15).toFixed(2)),
-          noncurrent_assets_pct: Number((0.5 + Math.random() * 2).toFixed(2)),
-          total_risk_based_capital_ratio: Number((12 + Math.random() * 6).toFixed(2))
-        };
-      });
-      
-      // Sort by total assets descending
-      processedData.sort((a, b) => b.total_assets - a.total_assets);
-      
+      const rows = Array.isArray(resp?.data) ? resp.data : [];
+
+      const data = rows.slice(0, top).map(r => ({
+        bank_name: r.INSTNAME || r.BKNAME || r.name || null,
+        rssd_id: r.ID_RSSD || r.IDRSSD || r.ID_Rssd || null,
+        total_assets: r.ASSET != null ? Number(r.ASSET) : null,
+        cre_to_tier1: r.UBPRCD173 != null ? Number(r.UBPRCD173) : null,
+        cd_to_tier1: r.UBPRCD177 != null ? Number(r.UBPRCD177) : null,
+        net_loans_assets: r.UBPRLD01 != null ? Number(r.UBPRLD01) : null,
+        noncurrent_assets_pct: r.UBPRFD12 != null ? Number(r.UBPRFD12) : null,
+        total_risk_based_capital_ratio:
+          r.UBPR9950 != null ? Number(r.UBPR9950) : null,
+      }));
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
-          data: processedData,
+          data,
           _meta: {
-            reportingPeriod: reportingPeriod,
-            source: 'ffiec_cdr_with_calculations',
+            reportingPeriod,
+            source: 'ubpr_real_data',
+            count: data.length,
             timestamp: new Date().toISOString(),
-            count: processedData.length,
-            note: 'Using CDR institution data with calculated ratios'
-          }
-        })
+          },
+        }),
       };
-      
-    } catch (error) {
-      console.error('Data fetch error:', error);
-      
-      // Return sample data as fallback
+    } catch (err) {
+      console.error('Data fetch error:', err.message);
       const sampleData = [
         {
-          bank_name: "First National Bank",
-          rssd_id: "123456",
+          bank_name: 'First National Bank',
+          rssd_id: '123456',
           total_assets: 5000000,
           cre_to_tier1: 325.5,
           cd_to_tier1: 97.65,
           net_loans_assets: 72.3,
           noncurrent_assets_pct: 1.8,
-          total_risk_based_capital_ratio: 14.5
+          total_risk_based_capital_ratio: 14.5,
         },
         {
-          bank_name: "Regional Trust Company",
-          rssd_id: "234567",
+          bank_name: 'Regional Trust Company',
+          rssd_id: '234567',
           total_assets: 3500000,
           cre_to_tier1: 412.7,
           cd_to_tier1: 123.81,
           net_loans_assets: 68.9,
           noncurrent_assets_pct: 2.1,
-          total_risk_based_capital_ratio: 13.2
+          total_risk_based_capital_ratio: 13.2,
         },
         {
-          bank_name: "Community Savings Bank",
-          rssd_id: "345678",
+          bank_name: 'Community Savings Bank',
+          rssd_id: '345678',
           total_assets: 1200000,
           cre_to_tier1: 285.3,
           cd_to_tier1: 85.59,
           net_loans_assets: 75.6,
           noncurrent_assets_pct: 1.2,
-          total_risk_based_capital_ratio: 15.8
-        }
+          total_risk_based_capital_ratio: 15.8,
+        },
       ];
-      
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           data: sampleData,
           _meta: {
-            reportingPeriod: reportingPeriod,
+            reportingPeriod,
             source: 'sample_data',
-            error: error.message,
+            error: err.message,
             timestamp: new Date().toISOString(),
-            note: 'Using sample data due to API error'
-          }
-        })
+          },
+        }),
       };
     }
-    
   } catch (error) {
     console.error('Handler error:', error);
-    
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({
-        message: 'Internal server error',
-        error: error.message,
-        hint: 'Check Netlify function logs for details'
-      })
+      body: JSON.stringify({ message: 'Internal server error', error: error.message }),
     };
   }
 };
 
-// Export helpers for testing
-exports.toYYYYMMDD = toYYYYMMDD;
-exports.cleanParams = cleanParams;
-exports.fetchFFIECData = fetchFFIECData;
+exports.fetchUBPR = fetchUBPR;
+exports.generatePeriodsFallback = generatePeriodsFallback;
