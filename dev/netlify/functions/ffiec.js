@@ -7,6 +7,17 @@ const FFIEC_PWS_BASE = 'https://cdr.ffiec.gov/public/pws/webservices/retrievalse
 const FFIEC_REST_API = 'https://cdr.ffiec.gov/public/rest';
 const DEFAULT_TIMEOUT = 25000;
 
+function toYYYYMMDD(date) {
+  if (!date) return undefined;
+  return date.replace(/-/g, '');
+}
+
+function cleanParams(params = {}) {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  );
+}
+
 class FFIECClient {
   constructor() {
     this.username = process.env.FFIEC_USERNAME;
@@ -367,4 +378,6 @@ exports.handler = async (event) => {
 };
 
 exports.FFIECClient = FFIECClient;
+exports.toYYYYMMDD = toYYYYMMDD;
+exports.cleanParams = cleanParams;
 
