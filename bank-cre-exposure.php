@@ -20,20 +20,17 @@ register_activation_hook(__FILE__, 'bce_activate');
 function bce_enqueue_assets() {
     wp_enqueue_style('bce-style', plugin_dir_url(__FILE__) . 'assets/css/style.css', [], '1.0.0');
     wp_enqueue_script('bce-script', plugin_dir_url(__FILE__) . 'assets/js/main.js', [], '1.0.0', true);
+
+    // Pass data to JavaScript using wp_localize_script (WordPress best practice)
+    $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
+    wp_localize_script('bce-script', 'bce_data', [
+        'netlify_url' => $netlify_url,
+        'plugin_url' => plugin_dir_url(__FILE__),
+    ]);
 }
 add_action('wp_enqueue_scripts', 'bce_enqueue_assets');
 
-function bce_pass_js_vars() {
-    $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
-
-    $js_vars = "
-        window.bce_plugin_url = '" . plugin_dir_url(__FILE__) . "';
-        window.bce_netlify_url = '" . esc_js($netlify_url) . "';
-    ";
-
-    wp_add_inline_script('bce-script', $js_vars, 'before');
-}
-add_action('wp_enqueue_scripts', 'bce_pass_js_vars');
+// Remove the old bce_pass_js_vars function since we're using wp_localize_script now
 
 function bce_render_tool() {
     ob_start();
@@ -90,3 +87,4 @@ function bce_render_admin_page() {
     $netlify_url = get_option('BCE_NETLIFY_URL', 'https://stirring-pixie-0b3931.netlify.app');
     include plugin_dir_path(__FILE__) . 'templates/admin-page.php';
 }
+

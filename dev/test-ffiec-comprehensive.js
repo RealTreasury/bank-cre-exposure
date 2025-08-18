@@ -40,21 +40,21 @@ class FFIECTester {
       if (!this.client.hasCredentials()) {
         throw new Error('No FFIEC credentials provided');
       }
-      const result = await this.client.testUserAccess();
-      if (result.status !== 'SUCCESS') {
-        throw new Error(`PWS access failed: ${result.error}`);
+      const result = await this.client.testCredentials();
+      if (result.status !== 'CREDENTIALS_VALID') {
+        throw new Error(`Credential validation failed: ${result.error || result.status}`);
       }
-      return { message: 'PWS credentials validated successfully' };
+      return { message: 'Credentials validated successfully' };
     });
   }
 
   async testRESTAPI() {
     return await this.runTest('REST API Endpoints', async () => {
-      const periodsData = await this.client.callREST('https://api.ffiec.gov/public/v2/ubpr/periods', { format: 'json' });
-      if (!periodsData?.periods) {
-        throw new Error('Invalid periods response from REST API');
+      const periods = await this.client.getReportingPeriods();
+      if (!Array.isArray(periods) || periods.length === 0) {
+        throw new Error('No reporting periods returned');
       }
-      return { periodsAvailable: periodsData.periods.length, latestPeriod: periodsData.periods[0] };
+      return { periodsAvailable: periods.length, latestPeriod: periods[0] };
     });
   }
 
@@ -67,11 +67,11 @@ class FFIECTester {
       if (periods.length === 0) {
         throw new Error('No reporting periods available');
       }
-      const ubprData = await this.client.getUBPRData(periods[0], 3);
-      if (!Array.isArray(ubprData) || ubprData.length === 0) {
-        throw new Error('No UBPR data returned');
+      const data = await this.client.getBankData(periods[0], 3);
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('No bank data returned');
       }
-      return { reportingPeriod: periods[0], totalBanks: ubprData.length, sampleBank: ubprData[0]?.bank_name };
+      return { reportingPeriod: periods[0], totalBanks: data.length, sampleBank: data[0]?.bank_name };
     });
   }
 
