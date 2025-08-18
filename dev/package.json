@@ -4,13 +4,10 @@
   "description": "WordPress plugin with Netlify functions for FFIEC bank data",
   "main": "index.js",
   "scripts": {
-    "test": "node test-ffiec-comprehensive.js",
-    "test:ejs": "node -e \"console.log('EJS installed:', require('ejs').VERSION)\"",
-    "test:ffiec": "node test-ffiec-comprehensive.js",
-    "test:quick": "node quick-ffiec-diagnostic.js",
-    "check-env": "node ../scripts/check-netlify-env.js",
+    "dev": "netlify dev",
     "deploy": "netlify deploy --prod",
-    "dev": "netlify dev"
+    "test": "netlify functions:invoke ffiec --payload '{\"queryStringParameters\":{\"test\":\"true\"}}'",
+    "logs": "netlify logs:function ffiec"
   },
   "keywords": ["banking", "ffiec", "cre", "wordpress", "netlify"],
   "author": "Real Treasury",
