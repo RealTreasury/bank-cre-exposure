@@ -6,8 +6,7 @@
 
 [functions]
   # Global function settings
-  timeout = 30
-  memory = 1024
+  node_bundler = "esbuild"
 
 [functions.ffiec]
   timeout = 30
