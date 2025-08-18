@@ -1,0 +1,21 @@
+[build]
+  base = "dev"
+  command = "npm install && mkdir -p public && echo '<h1>Functions Active</h1>' > public/index.html"
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions.ffiec]
+  timeout = 60
+
+[functions.fred]
+  timeout = 30
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type"
+
+[build.environment]
+  NODE_VERSION = "18"
