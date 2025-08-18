@@ -1,6 +1,6 @@
 [build]
   base = "dev"
-  command = "npm install"
+  command = "npm install && mkdir -p public && echo '<h1>Functions Active</h1>' > public/index.html"
   publish = "public"
   functions = "netlify/functions"
 
