@@ -221,16 +221,13 @@ async function testFFIEC() {
         
         const testData = await testResponse.json();
         console.log('FFIEC credentials test:', testData);
-        
+
         if (testData.status === 'CREDENTIALS_MISSING') {
             showStatus('❌ FFIEC credentials not configured', false, 'error');
             let errorMsg = 'FFIEC API test failed - Missing credentials:\n' + JSON.stringify(testData, null, 2);
-            errorMsg += '\n\nTo fix this:\n1. Go to Netlify Dashboard\n2. Site settings > Environment variables\n3. Add these variables:';
-            if (testData.missing) {
-                testData.missing.forEach(variable => {
-                    errorMsg += `\n   • ${variable}`;
-                });
-            }
+            errorMsg += '\n\nTo fix this:\n1. Go to Netlify Dashboard\n2. Site settings > Environment variables\n3. Add:';
+            errorMsg += '\n   • FFIEC_USERNAME: your_ffiec_username';
+            errorMsg += '\n   • FFIEC_TOKEN: your_ffiec_security_token';
             showResult(errorMsg);
             return;
         }
@@ -256,49 +253,46 @@ async function testFFIEC() {
             throw new Error(`Invalid JSON response: ${text.substring(0, 200)}...`);
         }
 
-        // Check for API errors (no more mock data)
+        if (data.status === 'CREDENTIALS_MISSING') {
+            showStatus('❌ FFIEC credentials not configured', false, 'error');
+            let errorMsg = 'FFIEC API test failed - Missing credentials:\n' + JSON.stringify(data, null, 2);
+            errorMsg += '\n\nTo fix this:\n1. Go to Netlify Dashboard\n2. Site settings > Environment variables\n3. Add:';
+            errorMsg += '\n   • FFIEC_USERNAME: your_ffiec_username';
+            errorMsg += '\n   • FFIEC_TOKEN: your_ffiec_security_token';
+            showResult(errorMsg);
+            return;
+        }
+
         if (!dataResponse.ok || data.error) {
-            const errorDetails = data.error ? 
-                `API Error: ${data.message}\n${data.details || ''}` : 
+            const errorDetails = data.error ?
+                `API Error: ${data.message}\n${data.details || ''}` :
                 `HTTP ${dataResponse.status}: ${text}`;
-            
+
             showStatus('❌ FFIEC API test failed', false, 'error');
             showResult('FFIEC API Error:\n' + errorDetails);
             return;
         }
 
-        // Validate we got real data
-        let statusMessage = '✅ FFIEC API test successful';
         let statusType = 'success';
-        let recordCount = 0;
-        
-        if (Array.isArray(data.data)) {
-            recordCount = data.data.length;
-            
-            // Check if this looks like real data
-            const firstRecord = data.data[0];
-            if (firstRecord && firstRecord.total_assets > 0) {
-                statusMessage += ` - Got ${recordCount} real bank records`;
-            } else {
-                statusType = 'warning';
-                statusMessage = '⚠️ FFIEC API returned data but values may be incomplete';
-            }
-        } else {
+        let statusMessage = '✅ FFIEC API test successful';
+
+        if (data._meta?.source === 'sample_data') {
             statusType = 'warning';
-            statusMessage = '⚠️ FFIEC API returned unexpected data format';
+            statusMessage = '⚠️ Using sample data - check credentials or API availability';
+        } else if (data._meta?.source?.includes('real_data')) {
+            statusMessage = '✅ FFIEC API successful - real data retrieved';
         }
-        
+
         showStatus(statusMessage, false, statusType);
-        
-        // Show sample data for verification
+
         const resultData = {
-            recordCount: recordCount,
+            recordCount: Array.isArray(data.data) ? data.data.length : 0,
             dataSource: data._meta?.source || 'unknown',
             reportingPeriod: data._meta?.reportingPeriod || 'unknown',
-            sampleRecord: recordCount > 0 ? data.data[0] : 'None',
+            sampleRecord: Array.isArray(data.data) && data.data.length > 0 ? data.data[0] : 'None',
             metadata: data._meta || 'None'
         };
-        
+
         showResult('FFIEC API test result:\n' + JSON.stringify(resultData, null, 2));
         
     } catch (error) {

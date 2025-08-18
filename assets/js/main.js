@@ -40,7 +40,8 @@ async function getReportingPeriod() {
   return latestReleasedQuarterEnd();
 }
 
-async function loadBanksViaNetlify() {
+async function loadBanksViaNetlify(attempt = 1) {
+  const maxAttempts = 3;
   try {
     const base = window.bce_data?.netlify_url; // e.g., https://your-site.netlify.app
     if (!base) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
@@ -57,8 +58,32 @@ async function loadBanksViaNetlify() {
     const display = document.getElementById('reportingPeriodDisplay');
     if (display) display.textContent = _meta.reportingPeriod || rp;
     renderBanks(data);
+
+    const isRealData = _meta?.source?.includes('real_data');
+    const isSampleData = _meta?.source === 'sample_data';
+
+    const statusEl = document.getElementById('apiStatus');
+    const statusTextEl = document.getElementById('apiStatusText');
+
+    if (statusEl && statusTextEl) {
+      if (isRealData) {
+        statusEl.className = 'status-indicator connected';
+        statusTextEl.textContent = 'Live FFIEC Data';
+      } else if (isSampleData) {
+        statusEl.className = 'status-indicator error';
+        statusTextEl.textContent = 'Sample Data (Check Credentials)';
+        showError('Using sample data - check FFIEC credentials');
+      } else {
+        statusEl.className = 'status-indicator loading';
+        statusTextEl.textContent = 'Unknown Data Source';
+      }
+    }
   } catch (e) {
     console.error('FFIEC load failed:', e);
+    if (attempt < maxAttempts) {
+      await new Promise(r => setTimeout(r, attempt * 1000));
+      return loadBanksViaNetlify(attempt + 1);
+    }
     showError('FFIEC load failed: ' + e.message);
   }
 }
