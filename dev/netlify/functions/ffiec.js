@@ -1,94 +1,343 @@
-// FIXED Netlify function for FFIEC UBPR data
+// Enhanced FFIEC Netlify Function with proper PWS and REST API integration
 const axios = require('axios');
+const xml2js = require('xml2js');
 
-const UBPR_BASE = 'https://api.ffiec.gov/public/v2/ubpr';
+// FFIEC API endpoints
+const PWS_BASE = 'https://cdr.ffiec.gov/public/pws/webservices/retrievalservice.asmx';
+const UBPR_REST_BASE = 'https://api.ffiec.gov/public/v2/ubpr';
+const CDR_REST_BASE = 'https://cdr.ffiec.gov/public/rest';
 
-function getAuthHeaders() {
-  const username = process.env.FFIEC_USERNAME;
-  const token = process.env.FFIEC_TOKEN;
-  if (!username || !token) return null;
-  
-  // FIXED: Proper HTTP Basic authentication
-  const credentials = Buffer.from(`${username}:${token}`).toString('base64');
-  return {
-    'Authorization': `Basic ${credentials}`,
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'User-Agent': 'BankCREExposure/1.0'
-  };
-}
+class FFIECClient {
+  constructor() {
+    this.username = process.env.FFIEC_USERNAME;
+    this.token = process.env.FFIEC_TOKEN;
+    this.parser = new xml2js.Parser({ explicitArray: false });
+  }
 
-function latestReleasedQuarterEnd(today = new Date()) {
-  const y = today.getUTCFullYear();
-  const m = today.getUTCMonth() + 1;
-  let yy = y, mm = 3, dd = 31;
-  if (m >= 10)      { mm = 6; dd = 30; }
-  else if (m >= 7)  { mm = 3; dd = 31; }
-  else if (m >= 4)  { mm = 3; dd = 31; }
-  else              { yy = y - 1; mm = 12; dd = 31; }
-  return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
+  hasCredentials() {
+    return !!(this.username && this.token);
+  }
 
-function generatePeriodsFallback() {
-  const periods = [];
-  const today = new Date(latestReleasedQuarterEnd());
-  const quarters = ['12-31', '09-30', '06-30', '03-31'];
-  for (let y = today.getFullYear(); periods.length < 12; y--) {
-    for (const q of quarters) {
-      const iso = `${y}-${q}`;
-      if (new Date(iso) <= today) periods.push(iso);
-      if (periods.length >= 12) break;
+  getAuthHeaders() {
+    if (!this.hasCredentials()) {
+      throw new Error('CREDENTIALS_MISSING');
+    }
+    
+    const credentials = Buffer.from(`${this.username}:${this.token}`).toString('base64');
+    return {
+      'Authorization': `Basic ${credentials}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'BankCREExposure/2.0'
+    };
+  }
+
+  // SOAP envelope builder for PWS calls
+  buildSOAPEnvelope(operation, params) {
+    const soapBody = Object.entries(params)
+      .map(([key, value]) => `<${key}>${value}</${key}>`)
+      .join('');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${operation} xmlns="http://ffiec.gov/">
+      <UserName>${this.username}</UserName>
+      <Token>${this.token}</Token>
+      ${soapBody}
+    </${operation}>
+  </soap:Body>
+</soap:Envelope>`;
+  }
+
+  // PWS SOAP call with proper error handling
+  async callPWS(operation, params = {}, retries = 3) {
+    if (!this.hasCredentials()) {
+      throw new Error('CREDENTIALS_MISSING');
+    }
+
+    const soapEnvelope = this.buildSOAPEnvelope(operation, params);
+    
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`PWS ${operation} attempt ${attempt}/${retries}`);
+        
+        const response = await axios.post(PWS_BASE, soapEnvelope, {
+          headers: {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': `http://ffiec.gov/${operation}`,
+            'User-Agent': 'BankCREExposure/2.0'
+          },
+          timeout: 45000,
+          validateStatus: (status) => status < 500
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('INVALID_CREDENTIALS');
+        }
+
+        if (!response.data) {
+          throw new Error('EMPTY_RESPONSE');
+        }
+
+        // Parse SOAP response
+        const parsed = await this.parser.parseStringPromise(response.data);
+        const result = parsed?.['soap:Envelope']?.['soap:Body']?.[`${operation}Response`]?.[`${operation}Result`];
+        
+        if (!result) {
+          throw new Error('INVALID_SOAP_RESPONSE');
+        }
+
+        console.log(`PWS ${operation} success`);
+        return result;
+
+      } catch (error) {
+        console.error(`PWS ${operation} attempt ${attempt} failed:`, {
+          status: error.response?.status,
+          message: error.message
+        });
+
+        if (error.message === 'INVALID_CREDENTIALS') {
+          throw error;
+        }
+
+        if (attempt === retries) {
+          throw new Error(`PWS_API_UNAVAILABLE: ${error.message}`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
     }
   }
-  return periods;
-}
 
-async function fetchUBPR(endpoint, params = {}, retries = 3) {
-  const headers = getAuthHeaders();
-  if (!headers) {
-    throw new Error('CREDENTIALS_MISSING');
+  // REST API call with proper error handling
+  async callREST(endpoint, params = {}, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`REST ${endpoint} attempt ${attempt}/${retries}`);
+        
+        const headers = this.hasCredentials() ? this.getAuthHeaders() : { 'Accept': 'application/json' };
+        
+        const response = await axios.get(endpoint, {
+          headers,
+          params,
+          timeout: 45000,
+          validateStatus: (status) => status < 500
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('INVALID_CREDENTIALS');
+        }
+
+        console.log(`REST ${endpoint} success: ${response.status}`);
+        return response.data;
+
+      } catch (error) {
+        console.error(`REST ${endpoint} attempt ${attempt} failed:`, {
+          status: error.response?.status,
+          message: error.message
+        });
+
+        if (error.message === 'INVALID_CREDENTIALS') {
+          throw error;
+        }
+
+        if (attempt === retries) {
+          throw new Error(`REST_API_UNAVAILABLE: ${error.message}`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
   }
-  
-  const url = `${UBPR_BASE}${endpoint}`;
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
+
+  // Test user access using PWS
+  async testUserAccess() {
     try {
-      console.log(`FFIEC API attempt ${attempt}/${retries}: ${url}`);
-      
-      const response = await axios.get(url, {
-        headers,
-        params,
-        timeout: 45000,
-        validateStatus: (status) => status < 500
-      });
-      
-      console.log(`FFIEC API success: ${response.status}`);
-      return response.data;
-      
+      const result = await this.callPWS('TestUserAccess');
+      return { status: 'SUCCESS', result };
     } catch (error) {
-      console.error(`FFIEC API attempt ${attempt} failed:`, {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message
-      });
-      
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        throw new Error('INVALID_CREDENTIALS');
-      }
-      
-      if (error.response?.status >= 400 && error.response?.status < 500) {
-        throw new Error(`CLIENT_ERROR: ${error.response.status} ${error.response.statusText}`);
-      }
-      
-      if (attempt === retries) {
-        throw new Error(`API_UNAVAILABLE: ${error.message}`);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      return { status: 'FAILED', error: error.message };
     }
+  }
+
+  // Get available reporting periods using PWS
+  async getReportingPeriods() {
+    try {
+      const result = await this.callPWS('RetrieveUBPRReportingPeriods');
+      
+      // Parse the periods from SOAP response
+      let periods = [];
+      if (result && result.UBPRItem) {
+        const items = Array.isArray(result.UBPRItem) ? result.UBPRItem : [result.UBPRItem];
+        periods = items
+          .map(item => item.ReportingPeriodEndDate)
+          .filter(Boolean)
+          .sort((a, b) => new Date(b) - new Date(a));
+      }
+
+      return periods;
+    } catch (error) {
+      console.warn('PWS periods fetch failed:', error.message);
+      // Fallback to generated periods
+      return this.generateFallbackPeriods();
+    }
+  }
+
+  // Get panel of reporters for a reporting period
+  async getPanelOfReporters(reportingPeriod) {
+    try {
+      const formattedPeriod = reportingPeriod.replace(/-/g, '');
+      const result = await this.callPWS('RetrievePanelOfReporters', {
+        ReportingPeriodEndDate: formattedPeriod
+      });
+
+      let reporters = [];
+      if (result && result.InstitutionItem) {
+        const items = Array.isArray(result.InstitutionItem) ? result.InstitutionItem : [result.InstitutionItem];
+        reporters = items.map(item => ({
+          rssd_id: item.ID_Rssd,
+          name: item.Nm,
+          city: item.City,
+          state: item.St,
+          active: item.Active === 'true',
+          cert: item.Cert
+        }));
+      }
+
+      return reporters;
+    } catch (error) {
+      console.error('Panel of reporters fetch failed:', error.message);
+      throw error;
+    }
+  }
+
+  // Get UBPR data using REST API
+  async getUBPRData(reportingPeriod, limit = 100) {
+    try {
+      const formattedPeriod = reportingPeriod.replace(/-/g, '');
+      
+      const data = await this.callREST(`${UBPR_REST_BASE}/financials`, {
+        filters: `REPDTE:${formattedPeriod}`,
+        limit: Math.min(limit, 1000),
+        format: 'json'
+      });
+
+      const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      
+      return rows.map(r => ({
+        bank_name: r.INSTNAME || r.NAME || r.BKNAME || null,
+        rssd_id: r.ID_RSSD || r.IDRSSD || r.ID_Rssd || null,
+        total_assets: this.parseNumber(r.ASSET || r.TA),
+        cre_to_tier1: this.parseNumber(r.UBPRCD173 || r.UBPR_CD173),
+        cd_to_tier1: this.parseNumber(r.UBPRCD177 || r.UBPR_CD177),
+        net_loans_assets: this.parseNumber(r.UBPRLD01 || r.UBPR_LD01),
+        noncurrent_assets_pct: this.parseNumber(r.UBPRFD12 || r.UBPR_FD12),
+        total_risk_based_capital_ratio: this.parseNumber(r.UBPR9950 || r.UBPR_9950),
+        tier1_capital_ratio: this.parseNumber(r.UBPR7206 || r.UBPR_7206),
+        fdic_cert: r.CERT || r.FDIC_CERT || null,
+        state: r.STNAME || r.STATE || null,
+        city: r.CITY || null
+      }));
+
+    } catch (error) {
+      console.error('UBPR data fetch failed:', error.message);
+      throw error;
+    }
+  }
+
+  parseNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  }
+
+  generateFallbackPeriods() {
+    const quarters = ['12-31', '09-30', '06-30', '03-31'];
+    const periods = [];
+    const currentYear = new Date().getFullYear();
+    
+    for (let year = currentYear; year >= currentYear - 3; year--) {
+      for (const quarter of quarters) {
+        periods.push(`${year}-${quarter}`);
+      }
+    }
+    
+    return periods.slice(0, 12);
+  }
+
+  // Comprehensive health check
+  async healthCheck() {
+    const results = {
+      timestamp: new Date().toISOString(),
+      hasCredentials: this.hasCredentials(),
+      tests: []
+    };
+
+    // Test 1: PWS Access
+    if (this.hasCredentials()) {
+      const pws = await this.testUserAccess();
+      results.tests.push({
+        name: 'PWS Access',
+        status: pws.status === 'SUCCESS' ? 'PASS' : 'FAIL',
+        details: pws
+      });
+    } else {
+      results.tests.push({
+        name: 'PWS Access',
+        status: 'SKIP',
+        reason: 'No credentials'
+      });
+    }
+
+    // Test 2: REST API
+    try {
+      await this.callREST(`${UBPR_REST_BASE}/periods`, { format: 'json' });
+      results.tests.push({
+        name: 'REST API',
+        status: 'PASS'
+      });
+    } catch (error) {
+      results.tests.push({
+        name: 'REST API',
+        status: 'FAIL',
+        error: error.message
+      });
+    }
+
+    // Test 3: Data Retrieval
+    if (this.hasCredentials()) {
+      try {
+        const periods = await this.getReportingPeriods();
+        if (periods.length > 0) {
+          const sampleData = await this.getUBPRData(periods[0], 1);
+          results.tests.push({
+            name: 'Data Retrieval',
+            status: sampleData.length > 0 ? 'PASS' : 'PARTIAL',
+            recordCount: sampleData.length
+          });
+        }
+      } catch (error) {
+        results.tests.push({
+          name: 'Data Retrieval',
+          status: 'FAIL',
+          error: error.message
+        });
+      }
+    }
+
+    const passed = results.tests.filter(t => t.status === 'PASS').length;
+    const total = results.tests.filter(t => t.status !== 'SKIP').length;
+    
+    results.overall = passed === total ? 'HEALTHY' : passed > 0 ? 'PARTIAL' : 'FAILED';
+    
+    return results;
   }
 }
 
+// Main handler function
 exports.handler = async (event) => {
   const headers = {
     'Content-Type': 'application/json',
@@ -102,144 +351,58 @@ exports.handler = async (event) => {
   }
 
   try {
-    const qs = event.queryStringParameters || {};
-    
-    if (qs.test === 'true') {
-      const authHeaders = getAuthHeaders();
-      if (!authHeaders) {
-        const missing = [];
-        if (!process.env.FFIEC_USERNAME) missing.push('FFIEC_USERNAME');
-        if (!process.env.FFIEC_TOKEN) missing.push('FFIEC_TOKEN');
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ 
-            status: 'CREDENTIALS_MISSING', 
-            missing,
-            env: {
-              hasUsername: !!process.env.FFIEC_USERNAME,
-              hasToken: !!process.env.FFIEC_TOKEN
-            }
-          }),
-        };
-      }
-      
-      try {
-        await fetchUBPR('/periods', { format: 'json', limit: 1 });
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ status: 'HEALTHY' }),
-        };
-      } catch (error) {
-        let status = 'API_ERROR';
-        if (error.message === 'CREDENTIALS_MISSING') status = 'CREDENTIALS_MISSING';
-        if (error.message === 'INVALID_CREDENTIALS') status = 'INVALID_CREDENTIALS';
-        
-        return {
-          statusCode: 200,
-          headers,
-          body: JSON.stringify({ 
-            status,
-            message: error.message,
-            details: error.toString()
-          }),
-        };
-      }
-    }
+    const client = new FFIECClient();
+    const params = event.queryStringParameters || {};
 
-    if (qs.list_periods === 'true') {
-      try {
-        const data = await fetchUBPR('/periods', { format: 'json' });
-        const periods = Array.isArray(data?.periods) 
-          ? data.periods.map(p => p.period_end_date || p).filter(Boolean)
-          : [];
-        
-        if (periods.length > 0) {
-          const sortedPeriods = periods
-            .map(p => typeof p === 'string' ? p : p.toString())
-            .filter(p => /^\d{4}-\d{2}-\d{2}$/.test(p))
-            .sort((a, b) => new Date(b) - new Date(a));
-          
-          return { 
-            statusCode: 200, 
-            headers, 
-            body: JSON.stringify({ periods: sortedPeriods }) 
-          };
-        }
-      } catch (error) {
-        console.warn('Period list fetch failed:', error.message);
-      }
-      
+    // Health check endpoint
+    if (params.test === 'true') {
+      const health = await client.healthCheck();
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ periods: generatePeriodsFallback() }),
+        body: JSON.stringify(health)
       };
     }
 
-    const reportingPeriod = qs.reporting_period || latestReleasedQuarterEnd();
-    const top = Math.min(parseInt(qs.top, 10) || 100, 500);
+    // List available periods
+    if (params.list_periods === 'true') {
+      const periods = await client.getReportingPeriods();
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ periods })
+      };
+    }
+
+    // Get bank data
+    const reportingPeriod = params.reporting_period || client.generateFallbackPeriods()[0];
+    const limit = Math.min(parseInt(params.top, 10) || 100, 500);
 
     try {
-      const periodFormatted = reportingPeriod.replace(/-/g, '');
+      const data = await client.getUBPRData(reportingPeriod, limit);
       
-      console.log(`Fetching UBPR data for period: ${reportingPeriod} (${periodFormatted}), limit: ${top}`);
-      
-      const response = await fetchUBPR('/financials', {
-        filters: `REPDTE:${periodFormatted}`,
-        limit: top,
-        format: 'json'
-      });
-      
-      const rows = Array.isArray(response?.data) ? response.data : 
-                   Array.isArray(response) ? response : [];
-
-      console.log(`UBPR API returned ${rows.length} records`);
-
-      const data = rows.slice(0, top).map(r => {
-        const bankName = r.INSTNAME || r.NAME || r.BKNAME || r.name || null;
-        const rssdId = r.ID_RSSD || r.IDRSSD || r.ID_Rssd || r.RSSD_ID || null;
-        const totalAssets = r.ASSET || r.TA || null;
-        
-        const creToTier1 = r.UBPRCD173 || r.UBPR_CD173 || null;
-        const cdToTier1 = r.UBPRCD177 || r.UBPR_CD177 || null;
-        const netLoansAssets = r.UBPRLD01 || r.UBPR_LD01 || null;
-        const noncurrentAssetsPct = r.UBPRFD12 || r.UBPR_FD12 || null;
-        const totalRiskCapitalRatio = r.UBPR9950 || r.UBPR_9950 || null;
-
-        return {
-          bank_name: bankName,
-          rssd_id: rssdId ? String(rssdId) : null,
-          total_assets: totalAssets != null ? Number(totalAssets) : null,
-          cre_to_tier1: creToTier1 != null ? Number(creToTier1) : null,
-          cd_to_tier1: cdToTier1 != null ? Number(cdToTier1) : null,
-          net_loans_assets: netLoansAssets != null ? Number(netLoansAssets) : null,
-          noncurrent_assets_pct: noncurrentAssetsPct != null ? Number(noncurrentAssetsPct) : null,
-          total_risk_based_capital_ratio: totalRiskCapitalRatio != null ? Number(totalRiskCapitalRatio) : null,
-        };
-      });
-
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
-          data,
+          data: data.slice(0, limit),
           _meta: {
             reportingPeriod,
-            source: 'ffiec_ubpr_v2_real_data',
+            source: 'ffiec_ubpr_rest_api',
             count: data.length,
             timestamp: new Date().toISOString(),
-            apiEndpoint: '/v2/ubpr/financials'
-          },
-        }),
+            hasCredentials: client.hasCredentials()
+          }
+        })
       };
+
     } catch (error) {
-      console.error('UBPR data fetch error:', error.message);
+      console.error('Data fetch failed, using sample data:', error.message);
       
+      // Return sample data on API failure
       const sampleData = [
         {
-          bank_name: 'First National Bank (Sample)',
+          bank_name: 'First Sample Bank',
           rssd_id: '123456',
           total_assets: 5000000,
           cre_to_tier1: 325.5,
@@ -249,7 +412,7 @@ exports.handler = async (event) => {
           total_risk_based_capital_ratio: 14.5,
         },
         {
-          bank_name: 'Regional Trust Company (Sample)',
+          bank_name: 'Second Sample Bank',
           rssd_id: '234567',
           total_assets: 3500000,
           cre_to_tier1: 412.7,
@@ -270,26 +433,25 @@ exports.handler = async (event) => {
             source: 'sample_data_api_error',
             error: error.message,
             timestamp: new Date().toISOString(),
-            note: 'Real API failed, returning sample data'
-          },
-        }),
+            note: 'API unavailable, showing sample data'
+          }
+        })
       };
     }
+
   } catch (error) {
     console.error('Handler error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
-        error: 'Internal server error', 
+      body: JSON.stringify({
+        error: 'Internal server error',
         message: error.message,
         timestamp: new Date().toISOString()
-      }),
+      })
     };
   }
 };
 
-exports.fetchUBPR = fetchUBPR;
-exports.generatePeriodsFallback = generatePeriodsFallback;
-exports.getAuthHeaders = getAuthHeaders;
-
+// Export client for testing
+exports.FFIECClient = FFIECClient;
