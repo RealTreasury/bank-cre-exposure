@@ -35,21 +35,35 @@ class FFIECClient {
   // SOAP envelope builder for PWS calls
   buildSOAPEnvelope(operation, params) {
     const soapBody = Object.entries(params)
-      .map(([key, value]) => `<${key}>${value}</${key}>`)
+      .map(([key, value]) => `<${key}>${this.escapeXml(value)}</${key}>`)
       .join('');
 
     return `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-               xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Envelope 
+  xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <soap:Body>
     <${operation} xmlns="http://ffiec.gov/">
-      <UserName>${this.username}</UserName>
-      <Token>${this.token}</Token>
+      <UserName>${this.escapeXml(this.username)}</UserName>
+      <Token>${this.escapeXml(this.token)}</Token>
       ${soapBody}
     </${operation}>
   </soap:Body>
 </soap:Envelope>`;
+  }
+
+  escapeXml(unsafe) {
+    if (typeof unsafe !== 'string') return unsafe;
+    return unsafe.replace(/[<>&'\"]/g, function (c) {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case "'": return '&apos;';
+        case '"': return '&quot;';
+      }
+    });
   }
 
   // PWS SOAP call with proper error handling
@@ -82,12 +96,21 @@ class FFIECClient {
           throw new Error('EMPTY_RESPONSE');
         }
 
-        // Parse SOAP response
+        // Parse SOAP response with better error handling
         const parsed = await this.parser.parseStringPromise(response.data);
-        const result = parsed?.['soap:Envelope']?.['soap:Body']?.[`${operation}Response`]?.[`${operation}Result`];
-        
+        const soapEnvelope = parsed?.['soap:Envelope'] || parsed?.['SOAP-ENV:Envelope'];
+        const soapBody = soapEnvelope?.['soap:Body'] || soapEnvelope?.['SOAP-ENV:Body'];
+
+        // Check for SOAP fault
+        const fault = soapBody?.['soap:Fault'] || soapBody?.['SOAP-ENV:Fault'];
+        if (fault) {
+          const faultString = fault.faultstring || fault.detail || 'SOAP fault occurred';
+          throw new Error(`SOAP_FAULT: ${faultString}`);
+        }
+
+        const result = soapBody?.[`${operation}Response`]?.[`${operation}Result`];
         if (!result) {
-          throw new Error('INVALID_SOAP_RESPONSE');
+          throw new Error('INVALID_SOAP_RESPONSE: Missing result element');
         }
 
         console.log(`PWS ${operation} success`);
@@ -228,18 +251,32 @@ class FFIECClient {
       const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       
       return rows.map(r => ({
-        bank_name: r.INSTNAME || r.NAME || r.BKNAME || null,
-        rssd_id: r.ID_RSSD || r.IDRSSD || r.ID_Rssd || null,
-        total_assets: this.parseNumber(r.ASSET || r.TA),
-        cre_to_tier1: this.parseNumber(r.UBPRCD173 || r.UBPR_CD173),
-        cd_to_tier1: this.parseNumber(r.UBPRCD177 || r.UBPR_CD177),
-        net_loans_assets: this.parseNumber(r.UBPRLD01 || r.UBPR_LD01),
-        noncurrent_assets_pct: this.parseNumber(r.UBPRFD12 || r.UBPR_FD12),
-        total_risk_based_capital_ratio: this.parseNumber(r.UBPR9950 || r.UBPR_9950),
-        tier1_capital_ratio: this.parseNumber(r.UBPR7206 || r.UBPR_7206),
+        bank_name: r.INSTNAME || r.NAME || r.BKNAME || r.NM || null,
+        rssd_id: r.ID_RSSD || r.IDRSSD || r.ID_Rssd || r.CERT || null,
         fdic_cert: r.CERT || r.FDIC_CERT || null,
-        state: r.STNAME || r.STATE || null,
-        city: r.CITY || null
+        total_assets: this.parseNumber(r.ASSET || r.TA || r.UBPR2170),
+
+        // CRE and Construction & Development ratios
+        cre_to_tier1: this.parseNumber(r.UBPRCD173 || r.UBPR_CD173 || r.CD173),
+        cd_to_tier1: this.parseNumber(r.UBPRCD177 || r.UBPR_CD177 || r.CD177),
+
+        // Asset quality metrics
+        net_loans_assets: this.parseNumber(r.UBPRLD01 || r.UBPR_LD01 || r.LD01),
+        noncurrent_assets_pct: this.parseNumber(r.UBPRFD12 || r.UBPR_FD12 || r.FD12),
+
+        // Capital ratios
+        total_risk_based_capital_ratio: this.parseNumber(r.UBPR9950 || r.UBPR_9950 || r.CAPR9950),
+        tier1_capital_ratio: this.parseNumber(r.UBPR7206 || r.UBPR_7206 || r.CAPR7206),
+        leverage_ratio: this.parseNumber(r.UBPR7204 || r.UBPR_7204 || r.CAPR7204),
+
+        // Location data
+        state: r.STNAME || r.STATE || r.St || null,
+        city: r.CITY || r.City || null,
+
+        // Additional useful fields
+        institution_class: r.CLASS || r.INSTCLASS || null,
+        charter_type: r.CHARTER || r.CHARTYPE || null,
+        active: r.ACTIVE === '1' || r.ACTIVE === 'true' || true
       }));
 
     } catch (error) {
@@ -252,6 +289,33 @@ class FFIECClient {
     if (value === null || value === undefined || value === '') return null;
     const num = Number(value);
     return isNaN(num) ? null : num;
+  }
+
+  validateReportingPeriod(period) {
+    if (!period) return null;
+
+    // Ensure period is in YYYY-MM-DD format
+    const iso = period.match(/^\d{4}-\d{2}-\d{2}$/) ? period : null;
+    if (!iso) return null;
+
+    const [year, month, day] = iso.split('-');
+
+    // Validate quarter-end dates
+    const validQuarterEnds = [
+      `${year}-03-31`, `${year}-06-30`,
+      `${year}-09-30`, `${year}-12-31`
+    ];
+
+    if (validQuarterEnds.includes(iso)) {
+      return iso;
+    }
+
+    // Return closest valid quarter-end
+    const date = new Date(iso);
+    const quarter = Math.floor(date.getMonth() / 3);
+    const quarterEnds = ['03-31', '06-30', '09-30', '12-31'];
+
+    return `${year}-${quarterEnds[quarter]}`;
   }
 
   generateFallbackPeriods() {
@@ -273,66 +337,101 @@ class FFIECClient {
     const results = {
       timestamp: new Date().toISOString(),
       hasCredentials: this.hasCredentials(),
+      environment: {
+        nodeVersion: process.version,
+        region: process.env.AWS_REGION || 'unknown'
+      },
       tests: []
     };
 
-    // Test 1: PWS Access
-    if (this.hasCredentials()) {
-      const pws = await this.testUserAccess();
-      results.tests.push({
-        name: 'PWS Access',
-        status: pws.status === 'SUCCESS' ? 'PASS' : 'FAIL',
-        details: pws
-      });
-    } else {
-      results.tests.push({
-        name: 'PWS Access',
-        status: 'SKIP',
-        reason: 'No credentials'
-      });
-    }
-
-    // Test 2: REST API
+    // Test 1: Basic API connectivity
     try {
-      await this.callREST(`${UBPR_REST_BASE}/periods`, { format: 'json' });
-      results.tests.push({
-        name: 'REST API',
-        status: 'PASS'
-      });
+      await this.callREST('https://api.ffiec.gov/public/v2/ubpr/periods', { format: 'json' });
+      results.tests.push({ name: 'UBPR API Connectivity', status: 'PASS' });
     } catch (error) {
-      results.tests.push({
-        name: 'REST API',
-        status: 'FAIL',
-        error: error.message
+      results.tests.push({ 
+        name: 'UBPR API Connectivity', 
+        status: 'FAIL', 
+        error: error.message 
       });
     }
 
-    // Test 3: Data Retrieval
+    // Test 2: PWS SOAP Service
+    try {
+      const response = await this.callREST('https://cdr.ffiec.gov/public/pws/webservices/retrievalservice.asmx');
+      results.tests.push({ name: 'PWS SOAP Service', status: 'PASS' });
+    } catch (error) {
+      results.tests.push({ 
+        name: 'PWS SOAP Service', 
+        status: 'FAIL', 
+        error: error.message 
+      });
+    }
+
+    // Test 3: Credential validation (if available)
     if (this.hasCredentials()) {
       try {
-        const periods = await this.getReportingPeriods();
-        if (periods.length > 0) {
-          const sampleData = await this.getUBPRData(periods[0], 1);
-          results.tests.push({
-            name: 'Data Retrieval',
-            status: sampleData.length > 0 ? 'PASS' : 'PARTIAL',
-            recordCount: sampleData.length
-          });
-        }
+        const pwsResult = await this.testUserAccess();
+        results.tests.push({
+          name: 'PWS Credential Validation',
+          status: pwsResult.status === 'SUCCESS' ? 'PASS' : 'FAIL',
+          details: pwsResult
+        });
       } catch (error) {
         results.tests.push({
-          name: 'Data Retrieval',
+          name: 'PWS Credential Validation',
           status: 'FAIL',
           error: error.message
         });
       }
+
+      // Test 4: Data retrieval test
+      try {
+        const periods = await this.getReportingPeriods();
+        if (periods.length > 0) {
+          const testData = await this.getUBPRData(periods[0], 2);
+          results.tests.push({
+            name: 'Data Retrieval Test',
+            status: testData.length > 0 ? 'PASS' : 'PARTIAL',
+            recordCount: testData.length,
+            latestPeriod: periods[0]
+          });
+        } else {
+          results.tests.push({
+            name: 'Data Retrieval Test',
+            status: 'FAIL',
+            error: 'No reporting periods available'
+          });
+        }
+      } catch (error) {
+        results.tests.push({
+          name: 'Data Retrieval Test',
+          status: 'FAIL',
+          error: error.message
+        });
+      }
+    } else {
+      results.tests.push({
+        name: 'Credential Check',
+        status: 'SKIP',
+        reason: 'No credentials provided'
+      });
     }
 
+    // Generate overall status
     const passed = results.tests.filter(t => t.status === 'PASS').length;
     const total = results.tests.filter(t => t.status !== 'SKIP').length;
     
-    results.overall = passed === total ? 'HEALTHY' : passed > 0 ? 'PARTIAL' : 'FAILED';
-    
+    if (total === 0) {
+      results.overall = 'NO_TESTS';
+    } else if (passed === total) {
+      results.overall = 'HEALTHY';
+    } else if (passed > 0) {
+      results.overall = 'PARTIAL';
+    } else {
+      results.overall = 'FAILED';
+    }
+
     return results;
   }
 }
@@ -354,9 +453,17 @@ exports.handler = async (event) => {
     const client = new FFIECClient();
     const params = event.queryStringParameters || {};
 
-    // Health check endpoint
+    // Enhanced credential check for test endpoint
     if (params.test === 'true') {
       const health = await client.healthCheck();
+
+      // Add credential status to response
+      health.credentials = {
+        hasUsername: !!process.env.FFIEC_USERNAME,
+        hasToken: !!process.env.FFIEC_TOKEN,
+        status: client.hasCredentials() ? 'AVAILABLE' : 'MISSING'
+      };
+
       return {
         statusCode: 200,
         headers,
@@ -375,7 +482,7 @@ exports.handler = async (event) => {
     }
 
     // Get bank data
-    const reportingPeriod = params.reporting_period || client.generateFallbackPeriods()[0];
+    const reportingPeriod = client.validateReportingPeriod(params.reporting_period) || client.generateFallbackPeriods()[0];
     const limit = Math.min(parseInt(params.top, 10) || 100, 500);
 
     try {
