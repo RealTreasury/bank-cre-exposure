@@ -1,13 +1,21 @@
-// Netlify function for FFIEC UBPR data
+// FIXED Netlify function for FFIEC UBPR data
 const axios = require('axios');
 
 const UBPR_BASE = 'https://api.ffiec.gov/public/v2/ubpr';
 
-function getAuthConfig() {
+function getAuthHeaders() {
   const username = process.env.FFIEC_USERNAME;
   const token = process.env.FFIEC_TOKEN;
   if (!username || !token) return null;
-  return { auth: { username, password: token } };
+  
+  // FIXED: Proper HTTP Basic authentication
+  const credentials = Buffer.from(`${username}:${token}`).toString('base64');
+  return {
+    'Authorization': `Basic ${credentials}`,
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'BankCREExposure/1.0'
+  };
 }
 
 function latestReleasedQuarterEnd(today = new Date()) {
@@ -35,16 +43,49 @@ function generatePeriodsFallback() {
   return periods;
 }
 
-async function fetchUBPR(endpoint, params = {}) {
-  const auth = getAuthConfig();
-  if (!auth) throw new Error('Missing credentials');
+async function fetchUBPR(endpoint, params = {}, retries = 3) {
+  const headers = getAuthHeaders();
+  if (!headers) {
+    throw new Error('CREDENTIALS_MISSING');
+  }
+  
   const url = `${UBPR_BASE}${endpoint}`;
-  try {
-    const res = await axios.get(url, { ...auth, params, timeout: 30000 });
-    return res.data;
-  } catch (error) {
-    console.error('UBPR API error:', error.message);
-    throw error;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`FFIEC API attempt ${attempt}/${retries}: ${url}`);
+      
+      const response = await axios.get(url, {
+        headers,
+        params,
+        timeout: 45000,
+        validateStatus: (status) => status < 500
+      });
+      
+      console.log(`FFIEC API success: ${response.status}`);
+      return response.data;
+      
+    } catch (error) {
+      console.error(`FFIEC API attempt ${attempt} failed:`, {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message
+      });
+      
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        throw new Error('INVALID_CREDENTIALS');
+      }
+      
+      if (error.response?.status >= 400 && error.response?.status < 500) {
+        throw new Error(`CLIENT_ERROR: ${error.response.status} ${error.response.statusText}`);
+      }
+      
+      if (attempt === retries) {
+        throw new Error(`API_UNAVAILABLE: ${error.message}`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
   }
 }
 
@@ -62,49 +103,74 @@ exports.handler = async (event) => {
 
   try {
     const qs = event.queryStringParameters || {};
-    const auth = getAuthConfig();
-
+    
     if (qs.test === 'true') {
-      if (!auth) {
+      const authHeaders = getAuthHeaders();
+      if (!authHeaders) {
         const missing = [];
         if (!process.env.FFIEC_USERNAME) missing.push('FFIEC_USERNAME');
         if (!process.env.FFIEC_TOKEN) missing.push('FFIEC_TOKEN');
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ status: 'CREDENTIALS_MISSING', missing }),
+          body: JSON.stringify({ 
+            status: 'CREDENTIALS_MISSING', 
+            missing,
+            env: {
+              hasUsername: !!process.env.FFIEC_USERNAME,
+              hasToken: !!process.env.FFIEC_TOKEN
+            }
+          }),
         };
       }
+      
       try {
-        await fetchUBPR('/periods', { top: 1 });
+        await fetchUBPR('/periods', { format: 'json', limit: 1 });
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ status: 'CREDENTIALS_AVAILABLE' }),
+          body: JSON.stringify({ status: 'HEALTHY' }),
         };
-      } catch (err) {
+      } catch (error) {
+        let status = 'API_ERROR';
+        if (error.message === 'CREDENTIALS_MISSING') status = 'CREDENTIALS_MISSING';
+        if (error.message === 'INVALID_CREDENTIALS') status = 'INVALID_CREDENTIALS';
+        
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ status: 'API_ERROR', message: err.message }),
+          body: JSON.stringify({ 
+            status,
+            message: error.message,
+            details: error.toString()
+          }),
         };
       }
     }
 
     if (qs.list_periods === 'true') {
-      if (auth) {
-        try {
-          const data = await fetchUBPR('/periods', { format: 'json' });
-          const periods = Array.isArray(data?.data)
-            ? data.data.map(p => p.period_end_date).filter(Boolean)
-            : [];
-          if (periods.length) {
-            return { statusCode: 200, headers, body: JSON.stringify({ periods }) };
-          }
-        } catch (err) {
-          console.warn('Period list fetch failed:', err.message);
+      try {
+        const data = await fetchUBPR('/periods', { format: 'json' });
+        const periods = Array.isArray(data?.periods) 
+          ? data.periods.map(p => p.period_end_date || p).filter(Boolean)
+          : [];
+        
+        if (periods.length > 0) {
+          const sortedPeriods = periods
+            .map(p => typeof p === 'string' ? p : p.toString())
+            .filter(p => /^\d{4}-\d{2}-\d{2}$/.test(p))
+            .sort((a, b) => new Date(b) - new Date(a));
+          
+          return { 
+            statusCode: 200, 
+            headers, 
+            body: JSON.stringify({ periods: sortedPeriods }) 
+          };
         }
+      } catch (error) {
+        console.warn('Period list fetch failed:', error.message);
       }
+      
       return {
         statusCode: 200,
         headers,
@@ -113,27 +179,46 @@ exports.handler = async (event) => {
     }
 
     const reportingPeriod = qs.reporting_period || latestReleasedQuarterEnd();
-    const top = parseInt(qs.top, 10) || 100;
+    const top = Math.min(parseInt(qs.top, 10) || 100, 500);
 
     try {
-      const resp = await fetchUBPR('/financials', {
-        period_end_date: reportingPeriod,
-        top,
-        format: 'json',
+      const periodFormatted = reportingPeriod.replace(/-/g, '');
+      
+      console.log(`Fetching UBPR data for period: ${reportingPeriod} (${periodFormatted}), limit: ${top}`);
+      
+      const response = await fetchUBPR('/financials', {
+        filters: `REPDTE:${periodFormatted}`,
+        limit: top,
+        format: 'json'
       });
-      const rows = Array.isArray(resp?.data) ? resp.data : [];
+      
+      const rows = Array.isArray(response?.data) ? response.data : 
+                   Array.isArray(response) ? response : [];
 
-      const data = rows.slice(0, top).map(r => ({
-        bank_name: r.INSTNAME || r.BKNAME || r.name || null,
-        rssd_id: r.ID_RSSD || r.IDRSSD || r.ID_Rssd || null,
-        total_assets: r.ASSET != null ? Number(r.ASSET) : null,
-        cre_to_tier1: r.UBPRCD173 != null ? Number(r.UBPRCD173) : null,
-        cd_to_tier1: r.UBPRCD177 != null ? Number(r.UBPRCD177) : null,
-        net_loans_assets: r.UBPRLD01 != null ? Number(r.UBPRLD01) : null,
-        noncurrent_assets_pct: r.UBPRFD12 != null ? Number(r.UBPRFD12) : null,
-        total_risk_based_capital_ratio:
-          r.UBPR9950 != null ? Number(r.UBPR9950) : null,
-      }));
+      console.log(`UBPR API returned ${rows.length} records`);
+
+      const data = rows.slice(0, top).map(r => {
+        const bankName = r.INSTNAME || r.NAME || r.BKNAME || r.name || null;
+        const rssdId = r.ID_RSSD || r.IDRSSD || r.ID_Rssd || r.RSSD_ID || null;
+        const totalAssets = r.ASSET || r.TA || null;
+        
+        const creToTier1 = r.UBPRCD173 || r.UBPR_CD173 || null;
+        const cdToTier1 = r.UBPRCD177 || r.UBPR_CD177 || null;
+        const netLoansAssets = r.UBPRLD01 || r.UBPR_LD01 || null;
+        const noncurrentAssetsPct = r.UBPRFD12 || r.UBPR_FD12 || null;
+        const totalRiskCapitalRatio = r.UBPR9950 || r.UBPR_9950 || null;
+
+        return {
+          bank_name: bankName,
+          rssd_id: rssdId ? String(rssdId) : null,
+          total_assets: totalAssets != null ? Number(totalAssets) : null,
+          cre_to_tier1: creToTier1 != null ? Number(creToTier1) : null,
+          cd_to_tier1: cdToTier1 != null ? Number(cdToTier1) : null,
+          net_loans_assets: netLoansAssets != null ? Number(netLoansAssets) : null,
+          noncurrent_assets_pct: noncurrentAssetsPct != null ? Number(noncurrentAssetsPct) : null,
+          total_risk_based_capital_ratio: totalRiskCapitalRatio != null ? Number(totalRiskCapitalRatio) : null,
+        };
+      });
 
       return {
         statusCode: 200,
@@ -142,17 +227,19 @@ exports.handler = async (event) => {
           data,
           _meta: {
             reportingPeriod,
-            source: 'ubpr_real_data',
+            source: 'ffiec_ubpr_v2_real_data',
             count: data.length,
             timestamp: new Date().toISOString(),
+            apiEndpoint: '/v2/ubpr/financials'
           },
         }),
       };
-    } catch (err) {
-      console.error('Data fetch error:', err.message);
+    } catch (error) {
+      console.error('UBPR data fetch error:', error.message);
+      
       const sampleData = [
         {
-          bank_name: 'First National Bank',
+          bank_name: 'First National Bank (Sample)',
           rssd_id: '123456',
           total_assets: 5000000,
           cre_to_tier1: 325.5,
@@ -162,7 +249,7 @@ exports.handler = async (event) => {
           total_risk_based_capital_ratio: 14.5,
         },
         {
-          bank_name: 'Regional Trust Company',
+          bank_name: 'Regional Trust Company (Sample)',
           rssd_id: '234567',
           total_assets: 3500000,
           cre_to_tier1: 412.7,
@@ -170,17 +257,7 @@ exports.handler = async (event) => {
           net_loans_assets: 68.9,
           noncurrent_assets_pct: 2.1,
           total_risk_based_capital_ratio: 13.2,
-        },
-        {
-          bank_name: 'Community Savings Bank',
-          rssd_id: '345678',
-          total_assets: 1200000,
-          cre_to_tier1: 285.3,
-          cd_to_tier1: 85.59,
-          net_loans_assets: 75.6,
-          noncurrent_assets_pct: 1.2,
-          total_risk_based_capital_ratio: 15.8,
-        },
+        }
       ];
 
       return {
@@ -190,9 +267,10 @@ exports.handler = async (event) => {
           data: sampleData,
           _meta: {
             reportingPeriod,
-            source: 'sample_data',
-            error: err.message,
+            source: 'sample_data_api_error',
+            error: error.message,
             timestamp: new Date().toISOString(),
+            note: 'Real API failed, returning sample data'
           },
         }),
       };
@@ -202,10 +280,16 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ message: 'Internal server error', error: error.message }),
+      body: JSON.stringify({ 
+        error: 'Internal server error', 
+        message: error.message,
+        timestamp: new Date().toISOString()
+      }),
     };
   }
 };
 
 exports.fetchUBPR = fetchUBPR;
 exports.generatePeriodsFallback = generatePeriodsFallback;
+exports.getAuthHeaders = getAuthHeaders;
+
