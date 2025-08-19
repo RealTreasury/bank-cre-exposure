@@ -1,140 +1,255 @@
-/**
- * Bank CRE Exposure front-end.
- * Fetches FFIEC bank data and FRED market data via Netlify functions.
- */
-
-document.addEventListener('DOMContentLoaded', () => {
-  loadBanksViaNetlify().catch(err => showError(err.message || 'Unknown error'));
-  fetchMarketData().catch(err => console.error('Error fetching market data:', err));
+// Replace assets/js/main.js with this
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Bank CRE Plugin loaded');
+  loadBankData();
 });
 
-// Determine the latest released quarter end based on today's date
-function latestReleasedQuarterEnd(today = new Date()) {
-  const y = today.getUTCFullYear();
-  const m = today.getUTCMonth() + 1;
-  let yy = y, mm = 3, dd = 31;
-  if (m >= 10)      { mm = 6; dd = 30; }
-  else if (m >= 7)  { mm = 3; dd = 31; }
-  else if (m >= 4)  { mm = 3; dd = 31; }
-  else              { yy = y - 1; mm = 12; dd = 31; }
-  const iso = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-  return (iso === '2025-06-30') ? '2025-03-31' : iso;
-}
-
-// Retrieve safe reporting period from Netlify or compute fallback
-async function getReportingPeriod() {
-  const base = window.bce_data?.netlify_url || '';
+async function loadBankData() {
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const errorDiv = document.getElementById('errorMessage');
+  const statusIndicator = document.getElementById('apiStatus');
+  const statusText = document.getElementById('apiStatusText');
+  
+  // Show loading
+  if (loadingOverlay) loadingOverlay.classList.add('show');
+  if (statusIndicator) {
+    statusIndicator.className = 'status-indicator loading';
+  }
+  if (statusText) {
+    statusText.textContent = 'Loading bank data...';
+  }
+  
   try {
-    const r = await fetch(
-      `${base}/.netlify/functions/ffiec?list_periods=true`,
-      { signal: AbortSignal.timeout(15000) }
-    );
-    if (r.ok) {
-      const j = await r.json();
-      if (Array.isArray(j.periods) && j.periods.length) {
-        const p = j.periods[0];
-        return (p === '2025-06-30') ? '2025-03-31' : p;
-      }
+    // Get Netlify URL from WordPress
+    const netlifyUrl = window.bce_data?.netlify_url;
+    if (!netlifyUrl) {
+      throw new Error('Netlify URL not configured. Check WordPress admin settings.');
     }
-  } catch (_) {}
-  return latestReleasedQuarterEnd();
-}
-
-async function loadBanksViaNetlify(attempt = 1) {
-  const maxAttempts = 3;
-  try {
-    const base = window.bce_data?.netlify_url; // e.g., https://your-site.netlify.app
-    if (!base) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
-
-    const rp = await getReportingPeriod();
-    const url = `${base}/.netlify/functions/ffiec?reporting_period=${encodeURIComponent(rp)}&top=100`;
-    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(45000) });
-    if (!res.ok) throw new Error(`FFIEC HTTP ${res.status}`);
-
-    const { data = [], _meta = {} } = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      console.warn('No bank records returned from API');
+    
+    console.log('Using Netlify URL:', netlifyUrl);
+    
+    // Get latest reporting period
+    const period = await getLatestPeriod(netlifyUrl);
+    console.log('Using reporting period:', period);
+    
+    // Update display
+    const periodDisplay = document.getElementById('reportingPeriodDisplay');
+    if (periodDisplay) {
+      periodDisplay.textContent = formatPeriod(period);
     }
-    const display = document.getElementById('reportingPeriodDisplay');
-    if (display) display.textContent = _meta.reportingPeriod || rp;
-    renderBanks(data);
-
-    const isRealData = _meta?.source?.includes('real_data');
-    const isSampleData = _meta?.source === 'sample_data';
-
-    const statusEl = document.getElementById('apiStatus');
-    const statusTextEl = document.getElementById('apiStatusText');
-
-    if (statusEl && statusTextEl) {
-      if (isRealData) {
-        statusEl.className = 'status-indicator connected';
-        statusTextEl.textContent = 'Live FFIEC Data';
-      } else if (isSampleData) {
-        statusEl.className = 'status-indicator error';
-        statusTextEl.textContent = 'Sample Data (Check Credentials)';
-        showError('Using sample data - check FFIEC credentials');
-      } else {
-        statusEl.className = 'status-indicator loading';
-        statusTextEl.textContent = 'Unknown Data Source';
-      }
+    
+    // Fetch bank data
+    const url = `${netlifyUrl}/.netlify/functions/ffiec?reporting_period=${period}&top=100`;
+    console.log('Fetching data from:', url);
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
     }
-  } catch (e) {
-    console.error('FFIEC load failed:', e);
-    if (attempt < maxAttempts) {
-      await new Promise(r => setTimeout(r, attempt * 1000));
-      return loadBanksViaNetlify(attempt + 1);
+    
+    const result = await response.json();
+    console.log('API Response:', result);
+    
+    if (!result.data || !Array.isArray(result.data)) {
+      throw new Error('Invalid data format received from API');
     }
-    showError('FFIEC load failed: ' + e.message);
+    
+    if (result.data.length === 0) {
+      throw new Error('No bank data available for the selected reporting period');
+    }
+    
+    // Update status indicator
+    if (statusIndicator && statusText) {
+      statusIndicator.className = 'status-indicator connected';
+      statusText.textContent = `Live FFIEC Data (${result.data.length} banks)`;
+    }
+    
+    // Render the data
+    renderBankData(result.data);
+    updateStats(result.data);
+    
+    console.log(`Successfully loaded ${result.data.length} banks`);
+    
+  } catch (error) {
+    console.error('Failed to load bank data:', error);
+    
+    // Update status indicator
+    if (statusIndicator && statusText) {
+      statusIndicator.className = 'status-indicator error';
+      statusText.textContent = 'Connection Failed';
+    }
+    
+    // Show error message
+    showError(error.message);
+  } finally {
+    // Hide loading overlay
+    if (loadingOverlay) {
+      loadingOverlay.classList.remove('show');
+    }
   }
 }
 
-async function fetchMarketData() {
+async function getLatestPeriod(netlifyUrl) {
   try {
-    const netlify = (window.bce_data && window.bce_data.netlify_url) || '';
-    if (!netlify) throw new Error('Missing Netlify URL (bce_data.netlify_url)');
-
-    const r = await fetch(
-      `${netlify}/.netlify/functions/fred?series_id=DGS10&limit=30&sort_order=desc`,
-      { signal: AbortSignal.timeout(15000) }
-    );
-    if (!r.ok) throw new Error('FRED request failed');
-    const json = await r.json();
-    const observations = json?.observations || [];
-    const last = observations[observations.length - 1];
-
-    const el = document.getElementById('market10y');
-    if (el && last?.value != null) el.textContent = last.value;
-  } catch (e) {
-    console.error('Error fetching market data:', e);
+    const response = await fetch(`${netlifyUrl}/.netlify/functions/ffiec?list_periods=true`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.periods && data.periods.length > 0) {
+        return data.periods[0];
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to fetch periods from API:', error.message);
   }
+  
+  // Fallback to latest quarter
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  
+  if (month >= 10) return `${year}-09-30`;
+  if (month >= 7) return `${year}-06-30`;
+  if (month >= 4) return `${year}-03-31`;
+  return `${year - 1}-12-31`;
 }
 
-function renderBanks(banks) {
+function formatPeriod(period) {
+  if (!period) return 'Unknown';
+  const [year, month, day] = period.split('-');
+  return `${month}/${day}/${year}`;
+}
+
+function renderBankData(banks) {
   const tbody = document.getElementById('tableBody');
-  if (!tbody) return;
+  if (!tbody) {
+    console.error('Table body element not found');
+    return;
+  }
+  
   tbody.innerHTML = '';
-  banks.forEach((b, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${i + 1}</td>
-      <td>${b.bank_name ?? ''}</td>
-      <td>${b.rssd_id ?? ''}</td>
-      <td>${b.cre_to_tier1 ?? '—'}</td>
-      <td>${b.cd_to_tier1 ?? '—'}</td>
-      <td>${b.net_loans_assets ?? '—'}</td>
-      <td>${b.noncurrent_assets_pct ?? '—'}</td>
-      <td>${b.total_risk_based_capital_ratio != null ? Number(b.total_risk_based_capital_ratio).toFixed(2) : '—'}</td>
-    `;
-    tbody.appendChild(tr);
+  
+  // Sort banks by total assets (descending)
+  const sortedBanks = banks.sort((a, b) => (b.total_assets || 0) - (a.total_assets || 0));
+  
+  sortedBanks.forEach((bank, index) => {
+    const row = createBankRow(bank, index + 1);
+    tbody.appendChild(row);
   });
+  
+  console.log(`Rendered ${banks.length} bank rows`);
+}
+
+function createBankRow(bank, assetRank) {
+  const tr = document.createElement('tr');
+  
+  // Calculate CRE rank
+  const creRank = calculateCRERank(bank.cre_to_tier1);
+  
+  tr.innerHTML = `
+    <td class="rank-cell">${assetRank}</td>
+    <td class="rank-cell">${creRank}</td>
+    <td class="bank-name">${bank.bank_name || 'Unknown Bank'}</td>
+    <td class="number-format">${formatNumber(bank.total_assets)}</td>
+    <td class="number-format">${formatPercent(bank.net_loans_assets)}</td>
+    <td class="number-format">${formatPercent(bank.noncurrent_assets_pct)}</td>
+    <td class="number-format">${formatPercent(bank.cd_to_tier1)}</td>
+    <td class="number-format ${getCREClass(bank.cre_to_tier1)}">${formatPercent(bank.cre_to_tier1)}</td>
+    <td class="number-format">${formatPercent(bank.total_risk_based_capital_ratio)}</td>
+  `;
+  
+  return tr;
+}
+
+function calculateCRERank(creRatio) {
+  if (!creRatio) return '—';
+  // This is a simplified ranking - in real implementation you'd rank against all banks
+  if (creRatio >= 400) return '🔴 High';
+  if (creRatio >= 300) return '🟡 Med';
+  return '🟢 Low';
+}
+
+function getCREClass(ratio) {
+  if (!ratio) return '';
+  if (ratio >= 400) return 'high-risk';
+  if (ratio >= 300) return 'medium-risk';
+  return 'low-risk';
+}
+
+function formatNumber(num) {
+  if (!num) return '—';
+  return new Intl.NumberFormat('en-US').format(num);
+}
+
+function formatPercent(num) {
+  if (!num && num !== 0) return '—';
+  return num.toFixed(2) + '%';
+}
+
+function updateStats(banks) {
+  const validBanks = banks.filter(b => b.cre_to_tier1);
+  
+  // Banks meeting criteria (simplified)
+  const meetingCriteria = validBanks.filter(b => 
+    b.cre_to_tier1 >= 300 || 
+    b.net_loans_assets >= 70 || 
+    b.noncurrent_assets_pct >= 2
+  ).length;
+  
+  // Highest CRE ratio
+  const highestCRE = Math.max(...validBanks.map(b => b.cre_to_tier1 || 0));
+  
+  // Largest bank assets
+  const largestAssets = Math.max(...banks.map(b => b.total_assets || 0));
+  
+  // High risk count
+  const highRiskCount = validBanks.filter(b => b.cre_to_tier1 >= 400).length;
+  
+  // Update stat cards
+  updateStatCard('statBanksCount', meetingCriteria);
+  updateStatCard('statHighestCRE', highestCRE.toFixed(2) + '%');
+  updateStatCard('statLargestAssets', formatNumber(largestAssets));
+  updateStatCard('statHighRiskCount', highRiskCount);
+  
+  // Update last updated time
+  const lastUpdated = document.getElementById('lastUpdated');
+  if (lastUpdated) {
+    lastUpdated.textContent = new Date().toLocaleString();
+  }
+}
+
+function updateStatCard(id, value) {
+  const element = document.getElementById(id);
+  if (element) {
+    element.textContent = value;
+    element.classList.remove('loading');
+  }
 }
 
 function showError(message) {
-  const div = document.getElementById('errorMessage');
-  if (div) {
-    div.textContent = message;
-    div.style.display = 'block';
+  const errorDiv = document.getElementById('errorMessage');
+  if (errorDiv) {
+    errorDiv.textContent = `Error: ${message}`;
+    errorDiv.style.display = 'block';
   }
-  console.error('Error:', message);
+  
+  console.error('Bank data error:', message);
 }
 
+// Refresh function
+function refreshData() {
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (refreshBtn) {
+    refreshBtn.classList.add('loading');
+  }
+  
+  loadBankData().finally(() => {
+    if (refreshBtn) {
+      refreshBtn.classList.remove('loading');
+    }
+  });
+}
+
+// Make refresh function globally available
+window.refreshData = refreshData;
